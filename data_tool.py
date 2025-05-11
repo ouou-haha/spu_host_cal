@@ -1,14 +1,13 @@
-Version:1.0 StartHTML:0000000128 EndHTML:0000088449 StartFragment:0000000128 EndFragment:0000088449 SourceURL:about:blank
 # !/usr/bin/env python3
 import argparse
 import numpy as np
+import os
 import torch
 from typing import Tuple, Dict, Any
 import torch.nn.functional as F
 
 print(f"torch version: {torch.__version__} ")
 print(f"dl version: {5.6}")
-
 
 INT4: str = "int4"
 INT8: str = "int8"
@@ -27,6 +26,7 @@ dtype_torch_map = {
     "fp8_e5m2": torch.float8_e5m2,
 }
 
+
 def load_bin_tensor(path: str, dtype: str):
     if dtype == BF16:
         return torch.from_numpy(np.fromfile(path, dtype=np.uint16)).view(torch.bfloat16)
@@ -37,6 +37,7 @@ def load_bin_tensor(path: str, dtype: str):
     elif dtype == INT4:
         return load_int4_from_bin(path)
 
+
 def save_tensor_bin(tensor: torch.Tensor, path: str, dtype: str = None):
     if dtype == None:
         if tensor.dtype == torch.bfloat16:
@@ -46,7 +47,7 @@ def save_tensor_bin(tensor: torch.Tensor, path: str, dtype: str = None):
     else:
         if dtype.lower() == INT4:
             tensor = tensor.to(torch.int8)
-            save_int4_as_bin(tensor,path)
+            save_int4_as_bin(tensor, path)
         elif dtype.lower() == BF16:
             tensor.view(torch.float16).numpy().tofile(path)
         elif dtype.lower() in (FP32, INT8):
@@ -54,13 +55,13 @@ def save_tensor_bin(tensor: torch.Tensor, path: str, dtype: str = None):
     return True
 
 
-def sim(A,B):
+def sim(A, B):
     A_flat = A.flatten().to(torch.float32)
     B_flat = B.flatten().to(torch.float32)
     close = torch.isclose(A_flat, B_flat)
     # print(f"Compare {len(A_flat)}\n");
 
-    return F.cosine_similarity(A_flat, B_flat,dim=0).item()
+    return F.cosine_similarity(A_flat, B_flat, dim=0).item()
 
 
 def sim_bin(bin_file_path1: str, bin_file_path2: str, dtype: str):
@@ -104,6 +105,7 @@ def load_int4_from_bin(filename):
     for byte in byte_data:
         first = byte & 0xF
         second = (byte >> 4) & 0xF
+
         def int4_sign_extend(val):
             return val - 16 if val >= 8 else val
 
@@ -240,6 +242,38 @@ def bank_quantize(block: torch.Tensor, in_dtype: torch.dtype, out_dtype: str):
     return {
         'scale': dnt_scale,
         'qnt_block': qnt_block
+    }
+
+
+def gen_data_ds2qnt(
+        w: int,
+        c: int,
+        nnz: int,
+        idtype: str,
+        odtype: str,
+        bank_size: int = 64,
+):
+    bank_num = int(c / bank_size)
+    input_tensor = generate_matrix(w, c, dtype_torch_map[idtype])
+    input_sparse_qnt = torch.zeros(w, bank_num, nnz, dtype=dtype_torch_map[odtype])
+    scale = torch.zeros(w, bank_num)
+    bitmasks = np.zeros((w, bank_num), dtype=np.uint64)
+    if bank_size == 32:
+        bitmasks = np.zeros((w, bank_num), dtype=np.uint32)
+    for i in range(w):
+        for j in range(bank_num):
+            block = input_tensor[i][j * bank_size: (j + 1) * bank_size].clone()
+            block_nnz = bank_sparse(block, nnz)
+            block_nnz_qnt = bank_quantize(block_nnz['hp_block'], torch.bfloat16, odtype)
+            input_sparse_qnt[i][j * bank_size: (j + 1) * bank_size] = block_nnz_qnt['qnt_block']
+            scale[i][j] = block_nnz_qnt['scale']
+            bitmasks[i][j] = block_nnz['bitmask']
+
+    return {
+        'input_tensor': input_tensor,
+        'output_tensor': input_sparse_qnt,
+        'scale': scale,
+        'bitmasks': bitmasks,
     }
 
 
@@ -425,8 +459,7 @@ def gen_data_dense_with_scale(
         k: int,
         input_dtype: str,
         weight_dtype: str,
-)-> Dict[str, Any]:
-
+) -> Dict[str, Any]:
     if input_dtype not in (INT8, FP8E5M2, FP8E4M3) or weight_dtype not in (INT8, FP8E5M2, FP8E4M3):
         raise ValueError(f"only support int8, fp8 for lp gemm")
     bank_size = 64
@@ -441,31 +474,32 @@ def gen_data_dense_with_scale(
 
     for i in range(w):
         for j in range(bank_num):
-            block = input_tensor[i][j * bank_size : (j + 1) * bank_size].clone()
+            block = input_tensor[i][j * bank_size: (j + 1) * bank_size].clone()
             block = block.to(torch.float32)
             block_qnt = bank_quantize(block, torch.bfloat16, input_dtype)
-            input_qnt[i][j * bank_size : (j + 1) * bank_size] = block_qnt['qnt_block']
+            input_qnt[i][j * bank_size: (j + 1) * bank_size] = block_qnt['qnt_block']
             input_scale[i][j] = torch.from_numpy(float32_to_bf24_as_float32(block_qnt['scale'].numpy()))
 
     for i in range(k):
         for j in range(bank_num):
-            block = weight_tensor[i][j * bank_size : (j + 1) * bank_size].clone()
+            block = weight_tensor[i][j * bank_size: (j + 1) * bank_size].clone()
             block = block.to(torch.float32)
             block_qnt = bank_quantize(block, torch.bfloat16, weight_dtype)
-            weight_qnt[i][j * bank_size : (j + 1) * bank_size] = block_qnt['qnt_block']
+            weight_qnt[i][j * bank_size: (j + 1) * bank_size] = block_qnt['qnt_block']
             weight_scale[i][j] = torch.from_numpy(float32_to_bf24_as_float32(block_qnt['scale'].numpy()))
 
     input_dqnt = input_qnt.to(torch.float32).reshape(w, bank_num, bank_size) * input_scale.unsqueeze(-1)
     weight_dqnt = weight_qnt.to(torch.float32).reshape(k, bank_num, bank_size) * weight_scale.unsqueeze(-1)
     res_host = input_dqnt.reshape(w, c) @ weight_dqnt.reshape(k, c).T
     res_host = res_host.to(torch.bfloat16)
-    return{
+    return {
         'input_tensor': input_qnt,
         'weight_tensor': weight_qnt,
         'input_scale': input_scale,
         'weight_scale': weight_scale,
         'res_host': res_host,
     }
+
 
 def spu_host_data(
         matmul_mode: str,
@@ -489,7 +523,6 @@ def spu_host_data(
         in4_data_type_str: str,
         in5_data_type_str: str
 ) -> bool:
-
     if matmul_mode.lower() == 'sparse_mask':
         if in0_data_type_str.lower() == INT8:
             input_dtype = torch.int8
@@ -572,7 +605,7 @@ def spu_host_data(
         weight_scale = data['weight_scale']
 
         save_tensor_as_decimal_txt(hp_tensor_nnz.reshape(1, -1), input_file_0)
-        if in1_data_type_str.lower() != NA:           # hp is bf16 no scale
+        if in1_data_type_str.lower() != NA:  # hp is bf16 no scale
             save_tensor_as_decimal_txt(hp_scale.reshape(1, -1), input_file_1)
         save_tensor_as_decimal_txt(lp_tensor_encoded.reshape(1, -1), input_file_2)
         if in3_data_type_str.lower() != NA:  # hp is bf16 no scale
@@ -607,7 +640,7 @@ def spu_host_data(
             raise ValueError(f"unsupported weight dtype")
 
         if in0_data_type_str.lower() != in1_data_type_str.lower():
-            raise  ValueError(f"type of input must be same as weight")
+            raise ValueError(f"type of input must be same as weight")
 
         w = int(left_matrix_w_c_w)
         c = int(matrix_c)
@@ -698,4 +731,3 @@ if __name__ == "__main__":
     #             dtype=args.st
     #     )
     # pass
-
