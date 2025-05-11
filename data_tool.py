@@ -664,70 +664,58 @@ def spu_host_data(
 
 
 if __name__ == "__main__":
-    gen_data_dense_with_scale(64, 1024, 64, "int8", "int8")
+    parser = argparse.ArgumentParser(description="SPU Host Case Data Generation")
+    parser.add_argument("-e", type=str, required=True, help="Engine type，例如 spu")
+    parser.add_argument("-matmul_mode", type=str, help="矩阵乘模式，例如 sparse_mask / sparse_hp_lp")
+    parser.add_argument("-left_matrix_w_c_w", type=int, help="左矩阵 W 大小")
+    parser.add_argument("-matrix_c", type=int, help="矩阵 C 大小")
+    parser.add_argument("-right_matrix_k_c_k", type=int, help="右矩阵 K 大小")
+    parser.add_argument("-nnz_c", type=int, help="非零元素数量")
+    parser.add_argument("-case_data_description", type=str, help="用例描述，比如 case001")
+    parser.add_argument("-in0", type=str, help="input0 文件路径")
+    parser.add_argument("-in0_data_type_str", type=str, help="input0 数据类型")
+    parser.add_argument("-in1", type=str, help="input1 文件路径")
+    parser.add_argument("-in1_data_type_str", type=str, help="input1 数据类型")
+    parser.add_argument("-in2", type=str, help="input2 文件路径")
+    parser.add_argument("-in2_data_type_str", type=str, help="input2 数据类型")
+    parser.add_argument("-out0", type=str, help="output0 文件路径")
+    parser.add_argument("-out0_data_type_str", type=str, help="output0 数据类型")
+    # sparse_hp_lp 模式新增的额外输入（稀疏 + 高低精度混合的时候需要）
+    parser.add_argument("-in3", type=str, default="", help="input3 文件路径 (只在 sparse_hp_lp 模式需要)")
+    parser.add_argument("-in3_data_type_str", type=str, default="", help="input3 数据类型")
+    parser.add_argument("-in4", type=str, default="", help="input4 文件路径 (只在 sparse_hp_lp 模式需要)")
+    parser.add_argument("-in4_data_type_str", type=str, default="", help="input4 数据类型")
+    parser.add_argument("-in5", type=str, default="", help="input5 文件路径 (只在 sparse_hp_lp 模式需要)")
+    parser.add_argument("-in5_data_type_str", type=str, default="", help="input5 数据类型")
+    parser.add_argument("-st", type=str, default="", help="dtypr for sim")
+    args = parser.parse_args()
 
-    # parser = argparse.ArgumentParser(description="SPU Host Case Data Generation")
-    #
-    # parser.add_argument("-e", type=str, required=True, help="Engine type，例如 spu")
-    # parser.add_argument("-matmul_mode", type=str, help="矩阵乘模式，例如 sparse_mask / sparse_hp_lp")
-    # parser.add_argument("-left_matrix_w_c_w", type=int, help="左矩阵 W 大小")
-    # parser.add_argument("-matrix_c", type=int, help="矩阵 C 大小")
-    # parser.add_argument("-right_matrix_k_c_k", type=int, help="右矩阵 K 大小")
-    # parser.add_argument("-nnz_c", type=int, help="非零元素数量")
-    # parser.add_argument("-case_data_description", type=str, help="用例描述，比如 case001")
-    #
-    # parser.add_argument("-in0", type=str, help="input0 文件路径")
-    # parser.add_argument("-in0_data_type_str", type=str, help="input0 数据类型")
-    #
-    # parser.add_argument("-in1", type=str, help="input1 文件路径")
-    # parser.add_argument("-in1_data_type_str", type=str, help="input1 数据类型")
-    #
-    # parser.add_argument("-in2", type=str, help="input2 文件路径")
-    # parser.add_argument("-in2_data_type_str", type=str, help="input2 数据类型")
-    #
-    # parser.add_argument("-out0", type=str, help="output0 文件路径")
-    # parser.add_argument("-out0_data_type_str", type=str, help="output0 数据类型")
-    #
-    # # sparse_hp_lp 模式新增的额外输入（稀疏 + 高低精度混合的时候需要）
-    # parser.add_argument("-in3", type=str, default="", help="input3 文件路径 (只在 sparse_hp_lp 模式需要)")
-    # parser.add_argument("-in3_data_type_str", type=str, default="", help="input3 数据类型")
-    #
-    # parser.add_argument("-in4", type=str, default="", help="input4 文件路径 (只在 sparse_hp_lp 模式需要)")
-    # parser.add_argument("-in4_data_type_str", type=str, default="", help="input4 数据类型")
-    #
-    # parser.add_argument("-in5", type=str, default="", help="input5 文件路径 (只在 sparse_hp_lp 模式需要)")
-    # parser.add_argument("-in5_data_type_str", type=str, default="", help="input5 数据类型")
-    #
-    # parser.add_argument("-st", type=str, default="", help="dtypr for sim")
-    #
-    # args = parser.parse_args()
-    #
-    # if args.e.lower() == "spu":
-    #     spu_host_data(
-    #         matmul_mode=args.matmul_mode,
-    #         left_matrix_w_c_w=args.left_matrix_w_c_w,
-    #         matrix_c=args.matrix_c,
-    #         right_matrix_k_c_k=args.right_matrix_k_c_k,
-    #         input_file_0=args.in0,
-    #         input_file_1=args.in1,
-    #         output_file_0=args.out0,
-    #         input_file_2=args.in2,
-    #         nnz_c=args.nnz_c,
-    #         case_data_description=args.case_data_description,
-    #         in0_data_type_str=args.in0_data_type_str,
-    #         in1_data_type_str=args.in1_data_type_str,
-    #         in2_data_type_str=args.in2_data_type_str,
-    #         out0_data_type_str=args.out0_data_type_str,
-    #         input_file_3=args.in3,
-    #         input_file_4=args.in4,
-    #         input_file_5=args.in5,
-    #         in3_data_type_str=args.in3_data_type_str,
-    #         in4_data_type_str=args.in4_data_type_str,
-    #         in5_data_type_str=args.in5_data_type_str,
-    #     )
-    # elif args.e.lower() == 'sim':
-    #     sim_bin(bin_file_path1=args.in0,
-    #             bin_file_path2=args.in1,
-    #             dtype=args.st
-    #     )
-    # pass
+    if args.e.lower() == "spu":
+        spu_host_data(
+            matmul_mode=args.matmul_mode,
+            left_matrix_w_c_w=args.left_matrix_w_c_w,
+            matrix_c=args.matrix_c,
+            right_matrix_k_c_k=args.right_matrix_k_c_k,
+            input_file_0=args.in0,
+            input_file_1=args.in1,
+            output_file_0=args.out0,
+            input_file_2=args.in2,
+            nnz_c=args.nnz_c,
+            case_data_description=args.case_data_description,
+            in0_data_type_str=args.in0_data_type_str,
+            in1_data_type_str=args.in1_data_type_str,
+            in2_data_type_str=args.in2_data_type_str,
+            out0_data_type_str=args.out0_data_type_str,
+            input_file_3=args.in3,
+            input_file_4=args.in4,
+            input_file_5=args.in5,
+            in3_data_type_str=args.in3_data_type_str,
+            in4_data_type_str=args.in4_data_type_str,
+            in5_data_type_str=args.in5_data_type_str,
+        )
+    elif args.e.lower() == 'sim':
+        sim_bin(bin_file_path1=args.in0,
+                bin_file_path2=args.in1,
+                dtype=args.st
+        )
+    pass
