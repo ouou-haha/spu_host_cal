@@ -7,7 +7,7 @@ from typing import Tuple, Dict, Any
 import torch.nn.functional as F
 
 print(f"torch version: {torch.__version__} ")
-print(f"dl version: {5.6}")
+print(f"data_tool version: {5.8}")
 
 INT4: str = "int4"
 INT8: str = "int8"
@@ -255,7 +255,10 @@ def gen_data_ds2qnt(
 ):
     bank_num = int(c / bank_size)
     input_tensor = generate_matrix(w, c, dtype_torch_map[idtype])
-    input_sparse_qnt = torch.zeros(w, bank_num, nnz, dtype=dtype_torch_map[odtype])
+    if odtype == INT4:
+        input_sparse_qnt = torch.zeros(w, bank_num, nnz, dtype=torch.int8)
+    else:
+        input_sparse_qnt = torch.zeros(w, bank_num, nnz, dtype=dtype_torch_map[odtype])
     scale = torch.zeros(w, bank_num)
     bitmasks = np.zeros((w, bank_num), dtype=np.uint64)
     if bank_size == 32:
