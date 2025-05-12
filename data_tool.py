@@ -314,7 +314,7 @@ def gen_data_s2ddqnt(
         idtype: str,
         odtype: str,
 ) -> Dict[str, Any]:
-    data_ds2qnt = gen_data_ds2qnt(w, c, nnz, odtype, idtype, 8)
+    data_ds2qnt = gen_data_ds2qnt(w, c, nnz, odtype, idtype)
 
     input_sparse_qnt = data_ds2qnt['output_tensor'].reshape(w, -1)  # [w, gc, nnz] -> [gc, w, nnz]
     input_scale = data_ds2qnt['scale'].reshape(w, -1)              # [w, gc]      -> [gc, w]
