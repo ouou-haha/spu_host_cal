@@ -268,7 +268,7 @@ def gen_data_ds2qnt(
             block = input_tensor[i][j * bank_size: (j + 1) * bank_size].clone()
             block_nnz = bank_sparse(block, nnz)
             block_nnz_qnt = bank_quantize(block_nnz['hp_block'], torch.bfloat16, odtype)
-            input_sparse_qnt[i][j * bank_size: (j + 1) * bank_size] = block_nnz_qnt['qnt_block']
+            input_sparse_qnt[i][j * nnz: (j + 1) * nnz] = block_nnz_qnt['qnt_block']
             scale[i][j] = block_nnz_qnt['scale']
             bitmasks[i][j] = block_nnz['bitmask']
 
