@@ -89,7 +89,7 @@ def dma_format_convert(w, c, tensor, bank_size, forward):
     gc = int(c / bank_size)
     cg = bank_size
     if forward == 1:
-        return tensor.reshape(w, c).reshape(w, gc, cg).permute(1, 0, 2).reshape(w, c)
+        return tensor.reshape(w, c).reshape(w, gc, cg).permute(1, 0, 2)
     elif forward == 3:
         return tensor.reshape(w, c)
     else:
