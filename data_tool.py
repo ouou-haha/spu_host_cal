@@ -260,7 +260,7 @@ def s2ddqnt(
         idtype: str,
         odtype: str = BF16,
 ) -> Dict[str, torch.Tensor]:
-    bank_size = 64           # default  bank_size=64
+    bank_size = 64  # default  bank_size=64
     bank_num = c // bank_size
     try:
         if idtype == INT4:
@@ -609,6 +609,7 @@ def gen_data_dense_with_scale(
     }
 
 
+# for wangwen auto test
 def spu_host_data(
         matmul_mode: str,
         left_matrix_w_c_w: str,
