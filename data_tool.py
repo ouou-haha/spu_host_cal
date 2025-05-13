@@ -314,16 +314,22 @@ def gen_data_s2ddqnt(
         idtype: str,
         odtype: str,
 ) -> Dict[str, Any]:
-    data_ds2qnt = gen_data_ds2qnt(w, c, nnz, odtype, idtype, 8)
+    data_ds2qnt = gen_data_ds2qnt(w, c, nnz, odtype, idtype)
 
-    input_sparse_qnt = data_ds2qnt['output_tensor'].reshape(w, -1)  # [w, gc, nnz] -> [gc, w, nnz]
-    input_scale = data_ds2qnt['scale'].reshape(w, -1)              # [w, gc]      -> [gc, w]
-    input_index = data_ds2qnt['index'].reshape(w, -1)              # [w, gc, nnz] -> [gc, w, nnz]
+    bank_num = c // 64
 
-    output_dense_qnt = torch.zeros(w, c, dtype=torch.float32)
-    row_idx = torch.arange(w).unsqueeze(1).expand(w, nnz)  # shape [w, nnz]
-    output_dense_qnt[row_idx, input_index.to(torch.long)] = input_sparse_qnt.to(torch.float32)
-    output_dense_dqnt = output_dense_qnt * input_scale.to(torch.float32)
+    input_sparse_qnt = data_ds2qnt['output_tensor'].reshape(w, bank_num, nnz)  # [w, bank_num, nnz]
+    input_scale = data_ds2qnt['scale'].reshape(w, bank_num)  # [w, bank_num]
+    input_index = data_ds2qnt['index'].reshape(w, bank_num, nnz)  # [w, bank_num, nnz]
+
+    output_dense_qnt = torch.zeros(w, bank_num, 64, dtype=torch.float32)
+    batch_idx = torch.arange(w).view(w, 1, 1).expand(w, bank_num, nnz)
+    bank_idx = torch.arange(bank_num).view(1, bank_num, 1).expand(w, bank_num, nnz)
+    value_idx = input_index.to(torch.long)  # [w, bank_num, nnz]
+
+    output_dense_qnt[batch_idx, bank_idx, value_idx] = input_sparse_qnt.to(torch.float32)
+    output_dense_dqnt = output_dense_qnt * input_scale.unsqueeze(-1).to(torch.float32)
+    output_dense_dqnt = output_dense_dqnt.reshape(w, c).to(dtype_torch_map[odtype])
 
     return {
         'input_sparse_qnt': input_sparse_qnt,
@@ -333,6 +339,7 @@ def gen_data_s2ddqnt(
         'output_dense_dqnt': output_dense_dqnt,
         'origin_tensor': data_ds2qnt['input_tensor'],
     }
+
 
 def gen_data_sparse_mask(
         w: int = 64,
