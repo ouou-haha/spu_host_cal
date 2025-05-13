@@ -4,13 +4,14 @@ import os
 import numpy as np
 import torch
 
+import data_tool
 from data_tool import (
     load_bin_tensor, save_tensor_bin, sim, sim_bin, dma_format_convert,
     load_int4_from_bin, save_int4_as_bin, float32_to_bf24_as_float32,
     generate_matrix, save_tensor_as_decimal_txt, get_topk_index,
     bank_sparse, bank_quantize, gen_data_ds2qnt,
     gen_data_sparse_mask, gen_data_sparse_hp_lp,
-    gen_data_dense_with_scale, spu_host_data
+    gen_data_dense_with_scale, spu_host_data, gen_data_topk
 )
 
 
@@ -59,13 +60,13 @@ class TestCase(unittest.TestCase):
         self.assertTrue(result)
 
     def test_dma_format_convert(self):
-        tensor = torch.arange(6)
-        out1 = dma_format_convert(2, 3, tensor, 1, 1)
-        self.assertEqual(out1.shape, (2, 3))
-        out3 = dma_format_convert(2, 3, tensor, 1, 3)
-        self.assertEqual(out3.shape, (2, 3))
-        out_else = dma_format_convert(2, 3, tensor, 1, 0)
-        self.assertEqual(out_else.shape, (2, 3))
+        tensor = torch.randn(16, 128).reshape(16, 128)
+        out2 = torch.zeros_like(tensor).reshape(32, 64)
+        out2[0:16, 0:64] = tensor[:, 0:64]
+        out2[16:32, 0:64] = tensor[:, 64:128]
+        out1 = dma_format_convert(16, 128, tensor, 64, 1)
+        self.assertEqual(out1.reshape(32, 64), out2)
+
 
     def test_load_bin_tensor_and_save_tensor_bin(self):
         # FP32 round-trip
@@ -148,6 +149,11 @@ class TestCase(unittest.TestCase):
         self.assertTrue(result)
         self.assertTrue(os.path.getsize(p2) > 0)
         for p in (p0, p1, p2): os.remove(p)
+
+    def test_gen_topk(self):
+        data = gen_data_topk(1, 10, 5, data_tool.BF16)
+        self.assertIn('input_tensor', data)
+        self.assertIn('output_tensor', data)
 
 
 if __name__ == '__main__':

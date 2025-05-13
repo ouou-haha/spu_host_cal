@@ -167,13 +167,13 @@ def get_topk_index(bank_vec: torch.Tensor, k: int) -> Tuple[torch.Tensor, torch.
 
     topk_indices = torch.tensor([idx for _, idx in combined_sorted[:k]])
     sorted_topk_indices, _ = torch.sort(topk_indices)
-    return sorted_topk_indices, topk_indices, bank_vec[topk_indices]
+    return sorted_topk_indices, topk_indices, bank_vec[sorted_topk_indices]
 
 
 def bank_sparse(block: torch.Tensor, nnz: int) -> Dict[str, Any]:
     block = block.to(torch.float32)
-    sorted_topk_indices, topk_indices = get_topk_index(block, nnz)
-    _, topk2_indices = get_topk_index(block, nnz + 1)
+    sorted_topk_indices, topk_indices, _ = get_topk_index(block, nnz)
+    _, topk2_indices, _ = get_topk_index(block, nnz + 1)
     all_indices = torch.arange(block.numel())
     lp_indices = torch.tensor([i for i in all_indices if i not in topk_indices])
 
