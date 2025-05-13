@@ -269,7 +269,7 @@ def gen_data_topk(w: int,
     }
 
 
-def gen_data_ds2qnt(
+def gen_data_d2sqnt(
         w: int,
         c: int,
         nnz: int,
@@ -314,9 +314,11 @@ def gen_data_s2ddqnt(
         idtype: str,
         odtype: str,
 ) -> Dict[str, Any]:
-    data_ds2qnt = gen_data_ds2qnt(w, c, nnz, odtype, idtype)
+    data_ds2qnt = gen_data_d2sqnt(w, c, nnz, odtype, idtype)
 
     bank_num = c // 64
+    if bank_num == 0:
+        bank_num = 1
 
     input_sparse_qnt = data_ds2qnt['output_tensor'].reshape(w, bank_num, nnz)  # [w, bank_num, nnz]
     input_scale = data_ds2qnt['scale'].reshape(w, bank_num)  # [w, bank_num]
