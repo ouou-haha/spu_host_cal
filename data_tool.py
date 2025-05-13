@@ -6,6 +6,8 @@ import torch
 from typing import Tuple, Dict, Any
 import torch.nn.functional as F
 
+import data_tool
+
 print(f"torch version: {torch.__version__} ")
 print(f"data_tool version: {5.9}")
 
@@ -245,6 +247,46 @@ def bank_quantize(block: torch.Tensor, in_dtype: torch.dtype, out_dtype: str):
     return {
         'scale': dnt_scale,
         'qnt_block': qnt_block
+    }
+
+
+def s2ddqnt(
+        input_sparse_qnt: torch.Tensor,
+        input_index: torch.Tensor,
+        input_scale: torch.Tensor,
+        w: int,
+        c: int,
+        nnz: int,
+        idtype: str,
+        odtype: str = BF16,
+) -> Dict[str, torch.Tensor]:
+    bank_size = 64           # default  bank_size=64
+    bank_num = c // bank_size
+    try:
+        if idtype == INT4:
+            input_sparse_qnt = input_sparse_qnt.reshape(w, bank_num, nnz).to(dtype_torch_map[INT8])
+        else:
+            input_sparse_qnt = input_sparse_qnt.reshape(w, bank_num, nnz).to(dtype_torch_map[idtype])
+        input_scale = input_scale.reshape(w, bank_num).to(torch.float32)
+        input_index = input_index.reshape(w, bank_num, nnz).to(torch.int8)
+    except Exception as e:
+        raise ValueError(f"Reshape failed: {e}")
+
+    output_dense_qnt = torch.zeros(w, bank_num, bank_size, dtype=torch.float32)
+    batch_idx = torch.arange(w).view(w, 1, 1).expand(w, bank_num, nnz)
+    bank_idx = torch.arange(bank_num).view(1, bank_num, 1).expand(w, bank_num, nnz)
+    value_idx = input_index.to(torch.long)  # [w, bank_num, nnz]
+
+    output_dense_qnt[batch_idx, bank_idx, value_idx] = input_sparse_qnt.to(torch.float32)
+    output_dense_dqnt = output_dense_qnt * input_scale.unsqueeze(-1).to(torch.float32)
+    output_dense_dqnt = output_dense_dqnt.reshape(w, c).to(dtype_torch_map[odtype])
+
+    return {
+        'input_sparse_qnt': input_sparse_qnt,
+        'input_index': input_index,
+        'input_scale': input_scale,
+        'output_dense_qnt': output_dense_qnt,
+        'output': output_dense_dqnt,
     }
 
 
