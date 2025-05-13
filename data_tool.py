@@ -159,7 +159,7 @@ def save_tensor_as_decimal_txt(tensor: torch.Tensor, txt_file: str) -> None:
             f.write(line + " ")
 
 
-def get_topk_index(bank_vec: torch.Tensor, k: int) -> Tuple[torch.Tensor, torch.Tensor]:
+def get_topk_index(bank_vec: torch.Tensor, k: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     abs_bank_vec = torch.abs(bank_vec)
     indices = torch.arange(len(bank_vec))
     combined = list(zip(abs_bank_vec.tolist(), indices.tolist()))
@@ -167,7 +167,7 @@ def get_topk_index(bank_vec: torch.Tensor, k: int) -> Tuple[torch.Tensor, torch.
 
     topk_indices = torch.tensor([idx for _, idx in combined_sorted[:k]])
     sorted_topk_indices, _ = torch.sort(topk_indices)
-    return sorted_topk_indices, topk_indices
+    return sorted_topk_indices, topk_indices, bank_vec[topk_indices]
 
 
 def bank_sparse(block: torch.Tensor, nnz: int) -> Dict[str, Any]:
@@ -245,6 +245,25 @@ def bank_quantize(block: torch.Tensor, in_dtype: torch.dtype, out_dtype: str):
     }
 
 
+def gen_data_topk(w: int,
+                  c: int,
+                  k: int,
+                  idtype: str,
+) -> Dict[str, Any]:
+    input_tensor = generate_matrix(w, c, dtype_torch_map[idtype])
+    output_tensor = torch.zeros(w, k, dtype=input_tensor.dtype)
+
+    for i in range(w):
+        block = input_tensor[i].clone()
+        _, block_index, block_topk = get_topk_index(block, k)
+        output_tensor[i] = block_topk
+
+    return {
+        'input_tensor': input_tensor,
+        'output_tensor': output_tensor,
+    }
+
+
 def gen_data_ds2qnt(
         w: int,
         c: int,
@@ -261,6 +280,7 @@ def gen_data_ds2qnt(
         input_sparse_qnt = torch.zeros(w, bank_num, nnz, dtype=dtype_torch_map[odtype])
     scale = torch.zeros(w, bank_num)
     bitmasks = np.zeros((w, bank_num), dtype=np.uint64)
+    index = torch.zeros(w, bank_num, nnz, dtype=torch.int8)
     if bank_size == 32:
         bitmasks = np.zeros((w, bank_num), dtype=np.uint32)
     for i in range(w):
@@ -268,15 +288,17 @@ def gen_data_ds2qnt(
             block = input_tensor[i][j * bank_size: (j + 1) * bank_size].clone()
             block_nnz = bank_sparse(block, nnz)
             block_nnz_qnt = bank_quantize(block_nnz['hp_block'], torch.bfloat16, odtype)
-            input_sparse_qnt[i][j * nnz: (j + 1) * nnz] = block_nnz_qnt['qnt_block']
+            input_sparse_qnt[i][j] = block_nnz_qnt['qnt_block']
             scale[i][j] = block_nnz_qnt['scale']
             bitmasks[i][j] = block_nnz['bitmask']
+            index[i][j] = block_nnz['sorted_topk_indices']
 
     return {
         'input_tensor': input_tensor,
         'output_tensor': input_sparse_qnt,
         'scale': scale,
         'bitmasks': bitmasks,
+        'index': index,
     }
 
 
