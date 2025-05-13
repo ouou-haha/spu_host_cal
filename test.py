@@ -11,7 +11,8 @@ from data_tool import (
     generate_matrix, save_tensor_as_decimal_txt, get_topk_index,
     bank_sparse, bank_quantize, gen_data_ds2qnt,
     gen_data_sparse_mask, gen_data_sparse_hp_lp,
-    gen_data_dense_with_scale, spu_host_data, gen_data_topk
+    gen_data_dense_with_scale, spu_host_data, gen_data_topk,
+    gen_data_s2ddqnt
 )
 
 
@@ -100,7 +101,7 @@ class TestCase(unittest.TestCase):
 
     def test_get_topk_index(self):
         vec = torch.tensor([3.0, 1.0, -2.0, 4.0])
-        sorted_idx, topk_idx = get_topk_index(vec, 2)
+        sorted_idx, topk_idx, _ = get_topk_index(vec, 2)
         self.assertTrue(torch.equal(topk_idx, torch.tensor([3, 0])))
         self.assertTrue(torch.equal(sorted_idx, torch.tensor([0, 3])))
 
@@ -154,6 +155,11 @@ class TestCase(unittest.TestCase):
         data = gen_data_topk(1, 10, 5, data_tool.BF16)
         self.assertIn('input_tensor', data)
         self.assertIn('output_tensor', data)
+
+    def test_gen_s2ddqnt(self):
+        data = gen_data_s2ddqnt(64, 64, 32, data_tool.INT8, data_tool.BF16)
+        self.assertIn('input_sparse_qnt', data)
+        self.assertIn('input_index', data)
 
 
 if __name__ == '__main__':

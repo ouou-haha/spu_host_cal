@@ -7,7 +7,7 @@ from typing import Tuple, Dict, Any
 import torch.nn.functional as F
 
 print(f"torch version: {torch.__version__} ")
-print(f"data_tool version: {5.8}")
+print(f"data_tool version: {5.9}")
 
 INT4: str = "int4"
 INT8: str = "int8"
@@ -16,6 +16,7 @@ UINT64: str = "uint64"
 FP8E5M2: str = "fp8_e5m2"
 FP8E4M3: str = "fp8_e4m3"
 FP32: str = "fp32"
+INT32: str = "int32"
 UINT32: str = "uint32"
 NA: str = "na"
 
@@ -34,12 +35,14 @@ def load_bin_tensor(path: str, dtype: str):
         return torch.from_numpy(np.fromfile(path, dtype=np.int8)).view(torch.int8)
     elif dtype == FP32:
         return torch.from_numpy(np.fromfile(path, dtype=np.float32))
+    elif dtype == INT32:
+        return torch.from_numpy(np.fromfile(path, dtype=np.int32))
     elif dtype == INT4:
         return load_int4_from_bin(path)
 
 
 def save_tensor_bin(tensor: torch.Tensor, path: str, dtype: str = None):
-    if dtype == None:
+    if dtype is None:
         if tensor.dtype == torch.bfloat16:
             tensor.view(torch.float16).numpy().tofile(path)
         elif tensor.dtype in (torch.float32, torch.int8):
@@ -167,7 +170,7 @@ def get_topk_index(bank_vec: torch.Tensor, k: int) -> Tuple[torch.Tensor, torch.
 
     topk_indices = torch.tensor([idx for _, idx in combined_sorted[:k]])
     sorted_topk_indices, _ = torch.sort(topk_indices)
-    return sorted_topk_indices, topk_indices, bank_vec[sorted_topk_indices]
+    return sorted_topk_indices, topk_indices, bank_vec[topk_indices]
 
 
 def bank_sparse(block: torch.Tensor, nnz: int) -> Dict[str, Any]:
@@ -249,18 +252,20 @@ def gen_data_topk(w: int,
                   c: int,
                   k: int,
                   idtype: str,
-) -> Dict[str, Any]:
+                  ) -> Dict[str, Any]:
     input_tensor = generate_matrix(w, c, dtype_torch_map[idtype])
     output_tensor = torch.zeros(w, k, dtype=input_tensor.dtype)
-
+    index = torch.zeros(w, k, dtype=torch.int32)
     for i in range(w):
         block = input_tensor[i].clone()
         _, block_index, block_topk = get_topk_index(block, k)
         output_tensor[i] = block_topk
+        index[i] = block_index
 
     return {
         'input_tensor': input_tensor,
-        'output_tensor': output_tensor,
+        'output_tensor': torch.abs(output_tensor),
+        'index': index,
     }
 
 
@@ -301,6 +306,33 @@ def gen_data_ds2qnt(
         'index': index,
     }
 
+
+def gen_data_s2ddqnt(
+        w: int,
+        c: int,
+        nnz: int,
+        idtype: str,
+        odtype: str,
+) -> Dict[str, Any]:
+    data_ds2qnt = gen_data_ds2qnt(w, c, nnz, odtype, idtype, 8)
+
+    input_sparse_qnt = data_ds2qnt['output_tensor'].reshape(w, -1)  # [w, gc, nnz] -> [gc, w, nnz]
+    input_scale = data_ds2qnt['scale'].reshape(w, -1)              # [w, gc]      -> [gc, w]
+    input_index = data_ds2qnt['index'].reshape(w, -1)              # [w, gc, nnz] -> [gc, w, nnz]
+
+    output_dense_qnt = torch.zeros(w, c, dtype=torch.float32)
+    row_idx = torch.arange(w).unsqueeze(1).expand(w, nnz)  # shape [w, nnz]
+    output_dense_qnt[row_idx, input_index.to(torch.long)] = input_sparse_qnt.to(torch.float32)
+    output_dense_dqnt = output_dense_qnt * input_scale.to(torch.float32)
+
+    return {
+        'input_sparse_qnt': input_sparse_qnt,
+        'input_index': input_index,
+        'input_scale': input_scale,
+        'output_dense_qnt': output_dense_qnt,
+        'output_dense_dqnt': output_dense_dqnt,
+        'origin_tensor': data_ds2qnt['input_tensor'],
+    }
 
 def gen_data_sparse_mask(
         w: int = 64,
@@ -742,5 +774,5 @@ if __name__ == "__main__":
         sim_bin(bin_file_path1=args.in0,
                 bin_file_path2=args.in1,
                 dtype=args.st
-        )
+                )
     pass
