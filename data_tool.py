@@ -5,8 +5,8 @@ import os
 import torch
 from typing import Tuple, Dict, Any
 import torch.nn.functional as F
-
-import data_tool
+import inspect
+import textwrap
 
 print(f"torch version: {torch.__version__} ")
 print(f"data_tool version: {5.9}")
@@ -318,7 +318,7 @@ def gen_data_d2sqnt(
         idtype: str,
         odtype: str,
         bank_size: int = 64,
-):
+) -> Dict[str, Any]:
     bank_num = int(c / bank_size)
     input_tensor = generate_matrix(w, c, dtype_torch_map[idtype])
     if odtype == INT4:
@@ -385,6 +385,38 @@ def gen_data_s2ddqnt(
     }
 
 
+def gen_data_qnt(
+        w: int,
+        c: int,
+        input_dtype: str = BF16,
+        out_dtype: str = INT8,
+        bank_size: int = 64,
+):
+    if input_dtype.lower() not in BF16:
+        raise ValueError(f"unsupported indtype")
+    bank_num = int(c / bank_size)
+    input_tensor = generate_matrix(w, c, dtype_torch_map[input_dtype])
+    if out_dtype == INT4:
+        input_sparse_qnt = torch.zeros(w, bank_num, bank_size, dtype=torch.int8)
+    else:
+        input_sparse_qnt = torch.zeros(w, bank_num, bank_size, dtype=dtype_torch_map[out_dtype])
+    scale = torch.zeros(w, bank_num)
+    bitmasks = np.zeros((w, bank_num), dtype=np.uint64)
+    index = torch.zeros(w, bank_num, bank_size, dtype=torch.int8)
+
+    for i in range(w):
+        for j in range(bank_num):
+            block = input_tensor[i][j * bank_size: (j + 1) * bank_size].clone()
+            block_qnt = bank_quantize(block, torch.bfloat16, out_dtype)
+            input_sparse_qnt[i][j] = block_qnt['qnt_block']
+            scale[i][j] = block_qnt['scale']
+    return {
+        'input_tensor': input_tensor,
+        'output_tensor': input_sparse_qnt,
+        'scale': scale,
+    }
+
+
 def gen_data_sparse_mask(
         w: int = 64,
         k: int = 64,
@@ -393,7 +425,7 @@ def gen_data_sparse_mask(
         bank_size: int = 64,
         input_dtype: torch.dtype = torch.bfloat16,
         weight_dtype: torch.dtype = torch.bfloat16,
-        out_dtype: torch.dtype = torch.bfloat16
+        out_dtype: torch.dtype = torch.bfloat16,
 ) -> Dict[str, torch.Tensor]:
     if nnz not in (8, 16, 32, 64):
         raise ValueError(f"unsupported nnz")
@@ -774,7 +806,7 @@ def spu_host_data(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="SPU Host Case Data Generation")
-    parser.add_argument("-e", type=str, required=True, help="Engine type，例如 spu")
+    parser.add_argument("-e", type=str, help="Engine type，例如 spu")
     parser.add_argument("-matmul_mode", type=str, help="矩阵乘模式，例如 sparse_mask / sparse_hp_lp")
     parser.add_argument("-left_matrix_w_c_w", type=int, help="左矩阵 W 大小")
     parser.add_argument("-matrix_c", type=int, help="矩阵 C 大小")
@@ -797,34 +829,99 @@ if __name__ == "__main__":
     parser.add_argument("-in5", type=str, default="", help="input5 文件路径 (只在 sparse_hp_lp 模式需要)")
     parser.add_argument("-in5_data_type_str", type=str, default="", help="input5 数据类型")
     parser.add_argument("-st", type=str, default="", help="dtypr for sim")
+
+    parser.add_argument("--save", type=str, default="", help="函数名")
+    parser.add_argument("--save_args", type=str, default="", help="逗号分隔的参数，如 '64,128,8,int8,bf16'")
+    parser.add_argument("--save_dir", type=str, default="./", help="保存输出 bin 文件的目录，默认为当前目录")
+    parser.add_argument("--help_func", type=str, default="", help="显示指定函数的参数和返回值信息")
+
     args = parser.parse_args()
 
-    if args.e.lower() == "spu":
-        spu_host_data(
-            matmul_mode=args.matmul_mode,
-            left_matrix_w_c_w=args.left_matrix_w_c_w,
-            matrix_c=args.matrix_c,
-            right_matrix_k_c_k=args.right_matrix_k_c_k,
-            input_file_0=args.in0,
-            input_file_1=args.in1,
-            output_file_0=args.out0,
-            input_file_2=args.in2,
-            nnz_c=args.nnz_c,
-            case_data_description=args.case_data_description,
-            in0_data_type_str=args.in0_data_type_str,
-            in1_data_type_str=args.in1_data_type_str,
-            in2_data_type_str=args.in2_data_type_str,
-            out0_data_type_str=args.out0_data_type_str,
-            input_file_3=args.in3,
-            input_file_4=args.in4,
-            input_file_5=args.in5,
-            in3_data_type_str=args.in3_data_type_str,
-            in4_data_type_str=args.in4_data_type_str,
-            in5_data_type_str=args.in5_data_type_str,
-        )
-    elif args.e.lower() == 'sim':
-        sim_bin(bin_file_path1=args.in0,
-                bin_file_path2=args.in1,
-                dtype=args.st
-                )
+    if args.help_func:
+        if args.help_func not in globals():
+            raise ValueError(f"function `{args.help_func}` does not exit.")
+        func = globals()[args.help_func]
+        sig = inspect.signature(func)
+        print(f"{args.help_func}{sig}")
+
+        print("\nPara：")
+        for param in sig.parameters.values():
+            name = param.name
+            annotation = param.annotation if param.annotation != inspect._empty else "未指定类型"
+            default = f"默认值 = {param.default}" if param.default != inspect._empty else "必填"
+            print(f"- {name}: 类型 = {annotation}, {default}")
+
+        # print return
+        doc = inspect.getdoc(func)
+        if doc:
+            print("\n📝 函数说明（docstring）：\n")
+            print(textwrap.indent(doc, "  "))
+        else:
+            print("\n📝 函数说明：无 docstring")
+
+        exit(0)
+
+    elif args.e:
+        if args.e.lower() == "spu":
+            spu_host_data(
+                matmul_mode=args.matmul_mode,
+                left_matrix_w_c_w=args.left_matrix_w_c_w,
+                matrix_c=args.matrix_c,
+                right_matrix_k_c_k=args.right_matrix_k_c_k,
+                input_file_0=args.in0,
+                input_file_1=args.in1,
+                output_file_0=args.out0,
+                input_file_2=args.in2,
+                nnz_c=args.nnz_c,
+                case_data_description=args.case_data_description,
+                in0_data_type_str=args.in0_data_type_str,
+                in1_data_type_str=args.in1_data_type_str,
+                in2_data_type_str=args.in2_data_type_str,
+                out0_data_type_str=args.out0_data_type_str,
+                input_file_3=args.in3,
+                input_file_4=args.in4,
+                input_file_5=args.in5,
+                in3_data_type_str=args.in3_data_type_str,
+                in4_data_type_str=args.in4_data_type_str,
+                in5_data_type_str=args.in5_data_type_str,
+            )
+        elif args.e.lower() == 'sim':
+            sim_bin(bin_file_path1=args.in0,
+                    bin_file_path2=args.in1,
+                    dtype=args.st
+                    )
+    elif args.save:
+        if args.save not in globals():
+            raise ValueError(f"Function {args.save} not found in this script.")
+        func = globals()[args.save]
+
+        raw_args = [x.strip() for x in args.save_args.split(',') if x.strip()]
+        parsed_args = []
+
+        for val in raw_args:
+            val_lower = val.lower()
+            if val_lower in dtype_torch_map:
+                parsed_args.append(val_lower)
+            else:
+                try:
+                    parsed_args.append(int(val))
+                except ValueError:
+                    raise ValueError(f"unsupported argument: {val}")
+        try:
+            result = func(*parsed_args)
+        except Exception as e:
+            raise RuntimeError(f"Error calling function `{args.save}` with args {parsed_args}: {e}")
+
+        if not isinstance(result, dict):
+            raise TypeError("Function must return a dict")
+
+        # 创建保存目录（如果不存在）
+        os.makedirs(args.save_dir, exist_ok=True)
+
+        for idx, (key, tensor) in enumerate(result.items()):
+            if isinstance(tensor, torch.Tensor):
+                file_path = os.path.join(args.save_dir, f"in{idx}.bin")
+                save_tensor_bin(tensor, file_path)
+                print(f"Saved {key} → {file_path}")
+
     pass
