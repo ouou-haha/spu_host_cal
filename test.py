@@ -12,7 +12,7 @@ from data_tool import (
     bank_sparse, bank_quantize, gen_data_d2sqnt,
     gen_data_sparse_mask, gen_data_sparse_hp_lp,
     gen_data_dense_with_scale, spu_host_data, gen_data_topk,
-    gen_data_s2ddqnt, s2ddqnt
+    gen_data_s2ddqnt, s2ddqnt, gen_data_qnt
 )
 
 
@@ -166,6 +166,12 @@ class TestDataTool(unittest.TestCase):
                        'bf16')
         self.assertIn('input_sparse_qnt', data)
         self.assertIn('input_index', data)
+
+    def test_qnt(self):
+        data = gen_data_qnt(64, 64, 'bf16', 'int8', bank_size=64)
+        self.assertIn('input_tensor', data)
+        self.assertIn('output_tensor', data)
+        self.assertIn('scale', data)
 
 
 if __name__ == '__main__':
