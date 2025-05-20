@@ -204,7 +204,7 @@ def bank_sparse(block: torch.Tensor, nnz: int) -> Dict[str, Any]:
     }
 
 
-def bank_quantize(block: torch.Tensor, in_dtype: torch.dtype, out_dtype: str):
+def bank_quantize(block: torch.Tensor, out_dtype: str):
     if out_dtype == BF16:
         return {
             'scale': torch.tensor([1.0]).to(torch.float32),
@@ -334,7 +334,7 @@ def gen_data_d2sqnt(
         for j in range(bank_num):
             block = input_tensor[i][j * bank_size: (j + 1) * bank_size].clone()
             block_nnz = bank_sparse(block, nnz)
-            block_nnz_qnt = bank_quantize(block_nnz['hp_block'], torch.bfloat16, odtype)
+            block_nnz_qnt = bank_quantize(block_nnz['hp_block'], odtype)
             input_sparse_qnt[i][j] = block_nnz_qnt['qnt_block']
             scale[i][j] = block_nnz_qnt['scale']
             bitmasks[i][j] = block_nnz['bitmask']
@@ -407,7 +407,7 @@ def gen_data_qnt(
     for i in range(w):
         for j in range(bank_num):
             block = input_tensor[i][j * bank_size: (j + 1) * bank_size].clone()
-            block_qnt = bank_quantize(block, torch.bfloat16, out_dtype)
+            block_qnt = bank_quantize(block, out_dtype)
             input_sparse_qnt[i][j] = block_qnt['qnt_block']
             scale[i][j] = block_qnt['scale']
     return {
@@ -509,8 +509,8 @@ def gen_data_sparse_hp_lp(
             bm = sparse_res['bitmask']
             sort_index[i][j] = sparse_res['sorted_topk_indices']
 
-            hp_sparse_qnt = bank_quantize(hp_sparse, torch.bfloat16, hp_dtype)
-            lp_sparse_qnt = bank_quantize(lp_sparse, torch.bfloat16, lp_dtype)
+            hp_sparse_qnt = bank_quantize(hp_sparse, hp_dtype)
+            lp_sparse_qnt = bank_quantize(lp_sparse, lp_dtype)
             scale_hp_fp24 = torch.from_numpy(float32_to_bf24_as_float32(hp_sparse_qnt['scale'].numpy()))
             scale_lp_fp24 = torch.from_numpy(float32_to_bf24_as_float32(lp_sparse_qnt['scale'].numpy()))
 
@@ -552,7 +552,7 @@ def gen_data_sparse_hp_lp(
         for j in range(bank_num):
             bank = weight_tensor[i][j * bank_size: (j + 1) * bank_size].clone()
             bank = bank.to(torch.float32)
-            weight_qnt_res = bank_quantize(bank, dtype_torch_map.get(BF16), weight_dtype)
+            weight_qnt_res = bank_quantize(bank, weight_dtype)
             weight_qnt[i][j * bank_size: (j + 1) * bank_size] = weight_qnt_res['qnt_block']
             weight_scale[i][j] = weight_qnt_res['scale']
 
@@ -616,7 +616,7 @@ def gen_data_dense_with_scale(
         for j in range(bank_num):
             block = input_tensor[i][j * bank_size: (j + 1) * bank_size].clone()
             block = block.to(torch.float32)
-            block_qnt = bank_quantize(block, torch.bfloat16, input_dtype)
+            block_qnt = bank_quantize(block, input_dtype)
             input_qnt[i][j * bank_size: (j + 1) * bank_size] = block_qnt['qnt_block']
             input_scale[i][j] = torch.from_numpy(float32_to_bf24_as_float32(block_qnt['scale'].numpy()))
 
@@ -624,7 +624,7 @@ def gen_data_dense_with_scale(
         for j in range(bank_num):
             block = weight_tensor[i][j * bank_size: (j + 1) * bank_size].clone()
             block = block.to(torch.float32)
-            block_qnt = bank_quantize(block, torch.bfloat16, weight_dtype)
+            block_qnt = bank_quantize(block, weight_dtype)
             weight_qnt[i][j * bank_size: (j + 1) * bank_size] = block_qnt['qnt_block']
             weight_scale[i][j] = torch.from_numpy(float32_to_bf24_as_float32(block_qnt['scale'].numpy()))
 
