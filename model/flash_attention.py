@@ -71,6 +71,7 @@ def flash_attention(
 
         attn_weight = attn_quant(attn_weight)  # prefill_quant
 
+        # attn_weight @ V    [B, H, Q, K] @ [B, H, K, D] -> [B, H, Q, D]
         output_buffer[..., bank_num] = torch.matmul(
             attn_weight.to(torch.bfloat16), value_states[:, :, j: j + n_col, :]
         ).to(softmax_dtype)
