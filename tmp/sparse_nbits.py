@@ -351,7 +351,6 @@ class QuantTool:
         scales = torch.maximum(scales, smallest_normal)
         # scales[scales < smallest_normal] = smallest_normal
         # scales[scales == 0] = 1
-        print(f"scale_wei:{scales}")
         # quant
         x = torch.clamp(
             torch.round(x / scales),
@@ -382,7 +381,6 @@ class QuantTool:
             x_min = (x * mask + ori_max * (1 - mask)).min(dim=-1, keepdim=True).values
 
             x_mean = (x_max + x_min) / 2
-            print(f"mean_we:{x_mean}")
 
         return x_mean
 
@@ -669,14 +667,9 @@ if __name__ == "__main__":
         quant_symmetric=False,
         quant_masked=True,
     )
-    print(f"x:{x.reshape(1, 64)}")
+    #print(f"x:{x.reshape(1, 64)}")
     y = tool(x)
-    print(f" wei:{y.reshape(1, bank_size)}")
-    print(f"mean: {(y - x).abs().mean():.4f}\tmax: {(y - x).abs().max():.4f}")
+    #print(f"mean: {(y - x).abs().mean():.4f}\tmax: {(y - x).abs().max():.4f}")
     # print(x.abs() - y.abs())
     # print(f"mean: {x.abs().mean():.4f}\tmax: {x.abs().max():.4f}")
 
-    res = bank_quantize(x.reshape(1, 64), INT4, False)
-    print(f"ou:{res['dqnt_tensor']}")
-    y = res['dqnt_tensor']
-    print(f"mean_ou: {(y - x.reshape(1, 64)).abs().mean():.4f}\tmax: {(y - x.reshape(1, 64)).abs().max():.4f}")
