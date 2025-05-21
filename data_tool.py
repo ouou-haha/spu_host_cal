@@ -210,6 +210,7 @@ def bank_quantize(block: torch.Tensor, out_dtype: str, sym: bool = True) -> Dict
             'scale': torch.tensor([1.0]).to(torch.float32),
             'qnt_block': block.clone().to(torch.bfloat16),
         }
+    ori_block = block.clone()
     block = block.to(torch.float32)
 
     mean = torch.zeros_like(block[..., 1])
@@ -220,8 +221,8 @@ def bank_quantize(block: torch.Tensor, out_dtype: str, sym: bool = True) -> Dict
         mean = (x_max + x_min) / 2
     block -= mean
     max_abs = torch.max(torch.abs(block))
-    print(f"mean:{mean}")
-    print(f"block:{block}")
+    # print(f"mean:{mean}")
+    # print(f"block:{block}")
     if out_dtype == FP8E5M2:
         scale = 57344.0 / max_abs
     elif out_dtype == FP8E4M3:
@@ -241,7 +242,7 @@ def bank_quantize(block: torch.Tensor, out_dtype: str, sym: bool = True) -> Dict
         q_min, q_max = -7, 7
         scaled = block * scale
         qnt_block = torch.round(scaled).clamp(q_min, q_max).to(torch.int8)
-        print(f"qnt_block{qnt_block}")
+
     elif out_dtype == FP8E5M2:
         q_min, q_max = -57344, 57344
         scaled = block * scale
@@ -252,12 +253,14 @@ def bank_quantize(block: torch.Tensor, out_dtype: str, sym: bool = True) -> Dict
         qnt_block = torch.round(scaled).clamp(q_min, q_max).to(torch.float8_e4m3fn)
     else:
         raise ValueError(f"Unsupported out_dtype: {out_dtype}")
+    # print(f"qnt_block{qnt_block}")
 
     dnt_scale = torch.tensor([1.0 / scale]) if scale != 0 else torch.tensor([0.0])
 
     # for asymmetric quantization dequant
     deqnt_block = (qnt_block * dnt_scale + mean).to(torch.bfloat16)
     return {
+        'input': ori_block,
         'scale': dnt_scale,
         'qnt_block': qnt_block,
         'dqnt_tensor': deqnt_block,
