@@ -5,6 +5,7 @@ import numpy as np
 import torch
 
 import data_tool
+
 from data_tool import (
     load_bin_tensor, save_tensor_bin, sim, sim_bin, dma_format_convert,
     load_int4_from_bin, save_int4_as_bin, float32_to_bf24_as_float32,
@@ -13,6 +14,9 @@ from data_tool import (
     gen_data_sparse_mask, gen_data_sparse_hp_lp,
     gen_data_dense_with_scale, spu_host_data, gen_data_topk,
     gen_data_s2ddqnt, s2ddqnt, gen_data_qnt
+)
+from tmp.sparse_nbits import (
+    MFSparseNbits
 )
 
 
@@ -172,6 +176,32 @@ class TestDataTool(unittest.TestCase):
         self.assertIn('input_tensor', data)
         self.assertIn('output_tensor', data)
         self.assertIn('scale', data)
+
+    def test_quant_asym(self):
+        bank_size = 64
+        sparsity = 0
+        quant_mode = "per_group"
+        num_bits = {"high": 4, "low": 0}
+        quant_symmetric = False
+        quant_masked = True
+        x = torch.randn(1, 64, dtype=torch.bfloat16).reshape(64, 1)
+        tool = MFSparseNbits(
+            sparsity=sparsity,
+            bank_size=bank_size,
+            num_bits=num_bits,
+            # sparse_mode=sparse_mode,
+            quant_mode=quant_mode,
+            quant_symmetric=quant_symmetric,
+            quant_masked=quant_masked,
+        )
+        y = tool(x)
+
+        res = bank_quantize(x.reshape(1, 64), "int4", False)
+        res_y = res['dqnt_tensor']
+        error = torch.mean((y - res_y) ** 2)  # 均方误差
+        print(f"Error between y and res_y: {error.item()}")
+
+        self.assertLess(error.item(), 1e-5, "y and res_y are not close enough")
 
 
 if __name__ == '__main__':
