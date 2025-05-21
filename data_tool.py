@@ -204,15 +204,24 @@ def bank_sparse(block: torch.Tensor, nnz: int) -> Dict[str, Any]:
     }
 
 
-def bank_quantize(block: torch.Tensor, out_dtype: str):
+def bank_quantize(block: torch.Tensor, out_dtype: str, sym: bool = True) -> Dict[str, torch.Tensor]:
     if out_dtype == BF16:
         return {
             'scale': torch.tensor([1.0]).to(torch.float32),
             'qnt_block': block.clone().to(torch.bfloat16),
         }
     block = block.to(torch.float32)
-    max_abs = torch.max(torch.abs(block))
 
+    mean = torch.zeros_like(block[..., 1])
+    # for asymmetric quantization
+    if not sym:
+        x_max = block.max(dim=-1, keepdim=True).values
+        x_min = block.min(dim=-1, keepdim=True).values
+        mean = (x_max + x_min) / 2
+    block -= mean
+    max_abs = torch.max(torch.abs(block))
+    print(f"mean:{mean}")
+    print(f"block:{block}")
     if out_dtype == FP8E5M2:
         scale = 57344.0 / max_abs
     elif out_dtype == FP8E4M3:
@@ -223,7 +232,7 @@ def bank_quantize(block: torch.Tensor, out_dtype: str):
         scale = 7.0 / max_abs
     else:
         scale = 1.0
-
+    print(f"scale:{1/scale}")
     if out_dtype == INT8:
         q_min, q_max = -127, 127
         scaled = block * scale
@@ -232,6 +241,7 @@ def bank_quantize(block: torch.Tensor, out_dtype: str):
         q_min, q_max = -7, 7
         scaled = block * scale
         qnt_block = torch.round(scaled).clamp(q_min, q_max).to(torch.int8)
+        print(f"qnt_block{qnt_block}")
     elif out_dtype == FP8E5M2:
         q_min, q_max = -57344, 57344
         scaled = block * scale
@@ -244,9 +254,14 @@ def bank_quantize(block: torch.Tensor, out_dtype: str):
         raise ValueError(f"Unsupported out_dtype: {out_dtype}")
 
     dnt_scale = torch.tensor([1.0 / scale]) if scale != 0 else torch.tensor([0.0])
+
+    # for asymmetric quantization dequant
+    deqnt_block = (qnt_block * dnt_scale + mean).to(torch.bfloat16)
     return {
         'scale': dnt_scale,
-        'qnt_block': qnt_block
+        'qnt_block': qnt_block,
+        'dqnt_tensor': deqnt_block,
+        'mean': mean,
     }
 
 
