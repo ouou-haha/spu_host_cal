@@ -7,12 +7,8 @@ from einops.einops import rearrange
 
 import os
 import torch
-import numpy as np
 import matplotlib.pyplot as plt
 import math
-
-# from ..utils.plot import plot_3d
-
 
 
 def check(x: torch.Tensor):
@@ -227,28 +223,7 @@ def get_calibrate_dim(layer):
 
     raise NotImplementedError(f"Unsupport layer type: {type(layer)}\n\t{infos}")
 
-def collect_inputs(
-    name: str, sparsity: float, bank_size: int, info: dict, dim: int=-1
-):
-    def hook(self, x):
-        if isinstance(x, tuple):
-            x = x[0]
-        # x = x.unsqueeze(0)
-        max_value, min_value, mask = calibrate(
-            x, sparsity=sparsity, bank_size=bank_size,
-            dim=get_calibrate_dim(self), mode=Info(name, rate=1.0).mode
-        )
-        if name not in info:
-            info[name] = Info(name=name, rate=0.99)
 
-        info[name].update(max_value, min_value, x)
-        # info[name].update(max_value, min_value, x*(~mask))
-
-        # info[name] = [torch.maximum(info[name][0], max_value), torch.minimum(info[name][1], min_value)]
-        # #EMA update rule shadow_variable = decay * shadow_variable + (1 - decay) * variable, decay 0.99
-        # # https://www.tensorflow.org/api_docs/python/tf/train/ExponentialMovingAverage
-        # info[name] = [0.99*info[name][0] + (1-0.99)*max_value, 0.99*info[name][1] + (1-0.99)*min_value]
-    return hook
 
 class Transform:
     supported_modes = ["per_token", "per_group", "per_bank", "per_block"]
@@ -430,44 +405,6 @@ class MFSparse:
         self.bank_size = bank_size
         self.transform = Transform(mode, bank_size)
 
-    # TODO: To Be Deprecated
-    def plot(self, idx: torch.Tensor):
-        if not idx.size(2) > 1:
-            import sys; sys.exit(-1)
-            return
-        # idx: [B, H, S, NB, K]
-        import einops
-        # [B, H, S, NB, K] -> [H, NB, B*S*K]
-        idx = einops.rearrange(idx, "b h s nb k -> h nb (b s k)")
-        info_tuple = tuple(
-            {
-                f"bank: {j}\nhead: {i}": idx[i, j].cpu().numpy()
-                for i in range(idx.size(0))
-            }
-            for j in range(idx.size(1))
-        )
-        import sys; sys.exit(-1)
-        from sparseopt.utils.plot import plot_hist_m
-        root_dir = "/ssd_1234/jiff/workspace/InfiniteBench/exp/figs/Yi-9B-200K/"
-        mode = "sparse_select-kv_cache-sp0.875-bank64-H4L0-sym-top2048_recent40-share-softmax"
-        dataset = "longbook_qa_chn"
-        pic_dir = os.path.join(root_dir, mode, dataset)
-        if not hasattr(MFSparse, "plot_count"):
-            MFSparse.plot_count = 0
-        else:
-            MFSparse.plot_count += 1
-        print('\r', MFSparse.plot_count, end="")
-        os.makedirs(pic_dir, exist_ok=True)
-        plot_hist_m(
-            info_tuple,
-            os.path.join(pic_dir, f"layer{MFSparse.plot_count}.png"),
-            n_bins=64,
-            image_size=5
-        )
-        import pickle
-        with open(os.path.join(pic_dir, f"layer{MFSparse.plot_count}.pkl"), "wb") as f:
-            pickle.dump(info_tuple, f)
-
     def get_topk_mask(self, x: torch.Tensor) -> torch.Tensor:
         if self.sparsity <= 0:
             return torch.ones_like(x, dtype=torch.bool)
@@ -595,33 +532,6 @@ class MFSparseNbits:
 
         # denorm
         x = self.denorm(x)
-
-        # # TODO: plot, to be deleted
-        # # if self.mode in ["per_group", "per_bank"] and x.size(1) == self.bank_size:
-        # if False:
-        #     if hasattr(MFSparseNbits, "num"):
-        #         MFSparseNbits.num += 1
-        #     else:
-        #         MFSparseNbits.num = 1
-        #     print("ploting ...")
-        #     plot_3d(
-        #         (
-        #             OrderedDict(dense=ori_x[0], sparse=x[0]),
-        #             OrderedDict(
-        #                 ori_high=self.transform.postprocess(ori_x_high)[0].cpu().abs().float().numpy(),
-        #                 quant_high=self.transform.postprocess(x_high)[0].cpu().abs().float().numpy(),
-        #             ),
-        #             OrderedDict(
-        #                 ori_low=self.transform.postprocess(ori_x_low)[0].cpu().abs().float().numpy(),
-        #                 low=self.transform.postprocess(x_low)[0].cpu().abs().float().numpy(),
-        #             )
-        #         ),
-        #         pic_path=os.path.join(
-        #             "/ssd_1234/jiff/workspace/lm-eval/figs",
-        #             f"mfs_nbits_{MFSparseNbits.num:04}"
-        #         ),
-        #         image_size=10
-        #     )
 
         return x
 
