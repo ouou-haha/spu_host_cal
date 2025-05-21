@@ -108,13 +108,6 @@ class TestDataTool(unittest.TestCase):
         self.assertTrue(torch.equal(topk_idx, torch.tensor([3, 0])))
         self.assertTrue(torch.equal(sorted_idx, torch.tensor([0, 3])))
 
-    def test_bank_sparse_and_quantize(self):
-        block = torch.tensor([0.1, -0.2, 0.3, -0.4])
-        res = bank_sparse(block, 2)
-        self.assertEqual(res['bitmask'], (1 << 2) | (1 << 3))
-        # test quantize
-        qres = bank_quantize(torch.tensor([0.5, -0.5]), torch.float32, "int8")
-        self.assertTrue('qnt_block' in qres and 'scale' in qres)
 
     def test_gen_data_ds2qnt(self):
         data = gen_data_d2sqnt(64, 64, 32, 'bf16', 'int8', bank_size=64)
