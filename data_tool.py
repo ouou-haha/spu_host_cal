@@ -233,7 +233,7 @@ def bank_quantize(block: torch.Tensor, out_dtype: str, sym: bool = True) -> Dict
         scale = 7.0 / max_abs
     else:
         scale = 1.0
-    print(f"scale:{1/scale}")
+    # print(f"scale:{1/scale}")
     if out_dtype == INT8:
         q_min, q_max = -127, 127
         scaled = block * scale
