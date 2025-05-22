@@ -108,6 +108,7 @@ class TestDataTool(unittest.TestCase):
         self.assertTrue(torch.equal(topk_idx, torch.tensor([3, 0])))
         self.assertTrue(torch.equal(sorted_idx, torch.tensor([0, 3])))
 
+
     def test_gen_data_ds2qnt(self):
         data = gen_data_d2sqnt(64, 64, 32, 'bf16', 'int8', bank_size=64)
         self.assertIn('input_tensor', data)
