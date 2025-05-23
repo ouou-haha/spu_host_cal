@@ -7,6 +7,9 @@ from typing import Tuple, Dict, Any
 import torch.nn.functional as F
 import inspect
 import textwrap
+from method import softmax
+
+import data_tool
 
 print(f"torch version: {torch.__version__} ")
 print(f"data_tool version: {5.9}")
@@ -43,20 +46,21 @@ def load_bin_tensor(path: str, dtype: str):
         return load_int4_from_bin(path)
 
 
-def save_tensor_bin(tensor: torch.Tensor, path: str, dtype: str = None):
+def save_tensor_bin(input_tensor: torch.Tensor, path: str, dtype: str = None):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     if dtype is None:
-        if tensor.dtype == torch.bfloat16:
-            tensor.view(torch.float16).numpy().tofile(path)
-        elif tensor.dtype in (torch.float32, torch.int8):
-            tensor.numpy().tofile(path)
+        if input_tensor.dtype == torch.bfloat16:
+            input_tensor.view(torch.float16).numpy().tofile(path)
+        elif input_tensor.dtype in (torch.float32, torch.int8):
+            input_tensor.numpy().tofile(path)
     else:
         if dtype.lower() == INT4:
-            tensor = tensor.to(torch.int8)
+            input_tensor = input_tensor.to(torch.int8)
             save_int4_as_bin(tensor, path)
         elif dtype.lower() == BF16:
-            tensor.view(torch.float16).numpy().tofile(path)
+            input_tensor.view(torch.float16).numpy().tofile(path)
         elif dtype.lower() in (FP32, INT8):
-            tensor.numpy().tofile(path)
+            input_tensor.numpy().tofile(path)
     return True
 
 
@@ -90,15 +94,15 @@ def sim_bin(bin_file_path1: str, bin_file_path2: str, dtype: str):
     return close.all().item()
 
 
-def dma_format_convert(w, c, tensor, bank_size, forward):
-    gc = int(c / bank_size)
+def dma_format_convert(w, c, input_tensor, bank_size, forward):
+    gc = 1 if int(c / bank_size) == 0 else int(c / bank_size)
     cg = bank_size
     if forward == 1:
-        return tensor.reshape(w, c).reshape(w, gc, cg).permute(1, 0, 2)
+        return input_tensor.reshape(w, c).reshape(w, gc, cg).permute(1, 0, 2)
     elif forward == 3:
-        return tensor.reshape(w, c)
+        return input_tensor.reshape(w, c)
     else:
-        return tensor.reshape(gc, w, cg).permute(1, 0, 2).reshape(w, c)
+        return input_tensor.reshape(gc, w, cg).permute(1, 0, 2).reshape(w, c)
 
 
 def load_int4_from_bin(filename):
@@ -305,6 +309,17 @@ def s2ddqnt(
         'input_scale': input_scale,
         'output_dense_qnt': output_dense_qnt,
         'output': output_dense_dqnt,
+    }
+
+
+def gen_data_softmax(w: int, c: int, idtype: str = "bf16") -> Dict[str, torch.Tensor]:
+    ori_input_tensor = generate_matrix(w, c, dtype_torch_map[idtype])
+    input_tensor = ori_input_tensor.clone()
+    output_tensor, local_sum, local_max = softmax(input_tensor, debug=False)
+    return {
+        'input': ori_input_tensor,
+        'd': local_sum,
+        'm': local_max,
     }
 
 
@@ -933,7 +948,6 @@ if __name__ == "__main__":
         if not isinstance(result, dict):
             raise TypeError("Function must return a dict")
 
-        # 创建保存目录（如果不存在）
         os.makedirs(args.save_dir, exist_ok=True)
 
         for idx, (key, tensor) in enumerate(result.items()):
