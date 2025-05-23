@@ -1,15 +1,16 @@
 # !/usr/bin/env python3
 import argparse
 import numpy as np
-import os
 import torch
 from typing import Tuple, Dict, Any
 import torch.nn.functional as F
 import inspect
 import textwrap
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from method import softmax
 
-import data_tool
 
 print(f"torch version: {torch.__version__} ")
 print(f"data_tool version: {5.9}")
