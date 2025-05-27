@@ -321,6 +321,7 @@ def gen_data_softmax(w: int, c: int, idtype: str = "bf16") -> Dict[str, torch.Te
         'input': ori_input_tensor,
         'd': local_sum,
         'm': local_max,
+        'output': output_tensor,
     }
 
 
