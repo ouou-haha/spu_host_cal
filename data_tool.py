@@ -8,9 +8,9 @@ import inspect
 import textwrap
 import sys
 import os
+
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from method import softmax
-
 
 print(f"torch version: {torch.__version__} ")
 print(f"data_tool version: {5.9}")
@@ -57,7 +57,7 @@ def save_tensor_bin(input_tensor: torch.Tensor, path: str, dtype: str = None):
     else:
         if dtype.lower() == INT4:
             input_tensor = input_tensor.to(torch.int8)
-            save_int4_as_bin(input_tensor, path)
+            save_int4_as_bin(tensor, path)
         elif dtype.lower() == BF16:
             input_tensor.view(torch.float16).numpy().tofile(path)
         elif dtype.lower() in (FP32, INT8):
@@ -321,7 +321,7 @@ def gen_data_softmax(w: int, c: int, idtype: str = "bf16") -> Dict[str, torch.Te
         'input': ori_input_tensor,
         'd': local_sum,
         'm': local_max,
-        'output': output_tensor,
+        'output_tensor': output_tensor,
     }
 
 
@@ -505,6 +505,83 @@ def gen_data_sparse_mask(
     }
 
 
+def sort(x: torch.Tensor, order: int = 0, bitonic: int = 0):
+    """
+    x      : Tensor，形状 (8, n)，代表 8 个 bank。
+    order  : 0 = 升序，1 = 降序（基准方向）
+    bitonic: 0  -> 所有 bank 方向一致
+             1  -> 每 1 个 bank 翻转一次    (↑↓↑↓↑↓↑↓)
+             2  -> 每 2 个 bank 翻转一次    (↑↑↓↓↑↑↓↓)
+             4  -> 每 4 个 bank 翻转一次    (↑↑↑↑↓↓↓↓)
+    """
+    assert x.dim() == 2 and x.size(0) == 8
+    n_bank = x.size(0)
+    sorted_banks = []
+
+    reverse_base = 0 if order == 1 else 1
+    for i in range(n_bank):
+        curr_order = order
+        if bitonic:
+            flip = (i // bitonic) % 2 != 0
+            if flip:
+                curr_order = reverse_base
+        vals, _ = torch.sort(x[i], descending=bool(curr_order))
+        sorted_banks.append(vals)
+
+    return torch.stack(sorted_banks, dim=0)
+
+
+def compare(
+    val:  torch.Tensor,          # (8, 64)
+    stride: int = 1,
+    flip:   int = 1,
+    mode:   int = 0,
+    idx:  torch.Tensor = None,   # (8, 64) or None
+):
+    assert val.shape == (8, 64)
+    if idx is not None:
+        assert idx.shape == val.shape
+
+    out_val = val.clone()
+    out_idx = None if idx is None else idx.clone()
+
+    reverse = 0 if mode == 1 else 1
+    stride_iters = 4 // stride
+    cmp_idx = 0
+
+    for ii in range(stride_iters):
+        for jj in range(stride):
+            b0 = ii * stride * 2 + jj
+            b1 = b0 + stride
+
+            curr_mode = mode
+            if flip and (cmp_idx // flip) % 2 == 1:
+                curr_mode = reverse
+            cmp_idx += 1
+
+            v0, v1 = out_val[b0], out_val[b1]
+
+            if curr_mode == 0:                     # Min-Max
+                mask = v0 <= v1
+                new0 = torch.where(mask, v0, v1)
+                new1 = torch.where(mask, v1, v0)
+            else:                                  # Max-Min
+                mask = v0 >= v1
+                new0 = torch.where(mask, v0, v1)
+                new1 = torch.where(mask, v1, v0)
+
+            out_val[b0], out_val[b1] = new0, new1
+
+            if out_idx is not None:
+                i0, i1 = out_idx[b0], out_idx[b1]
+                new_i0 = torch.where(mask, i0, i1)
+                new_i1 = torch.where(mask, i1, i0)
+                out_idx[b0], out_idx[b1] = new_i0, new_i1
+
+    return out_val
+
+
+
 def gen_data_sparse_hp_lp(
         w: int = 64,
         k: int = 64,
@@ -604,15 +681,15 @@ def gen_data_sparse_hp_lp(
     res_host = res_host.to(dtype_torch_map.get(out_dtype))
 
     # for cmodel seg=2
-    # if nnz == 8:
-    #     if c != 128:
-    #         raise ValueError(f"c must equal to 128 when nnz=8(for test)")
-    #     else:
-    #         weight_qnt = dma_format_convert(k, c, weight_qnt, 64, 1)
-    #         weight_scale = dma_format_convert(k, 2, weight_scale, 1, 1)
-    #         hp_scale = dma_format_convert(w, 2, hp_scale, 1, 1)
-    #         lp_tensor_encoded = dma_format_convert(w, c, lp_tensor_encoded, 64, 1)
-    #         lp_scale = dma_format_convert(w, 2, lp_scale, 1, 1)
+    if nnz == 8:
+        if c != 128:
+            raise ValueError(f"c must equal to 128 when nnz=8(for test)")
+        else:
+            weight_qnt = dma_format_convert(k, c, weight_qnt, 64, 1)
+            weight_scale = dma_format_convert(k, 2, weight_scale, 1, 1)
+            hp_scale = dma_format_convert(w, 2, hp_scale, 1, 1)
+            lp_tensor_encoded = dma_format_convert(w, c, lp_tensor_encoded, 64, 1)
+            lp_scale = dma_format_convert(w, 2, lp_scale, 1, 1)
 
     return {
         'input_tensor': input_matrix,
