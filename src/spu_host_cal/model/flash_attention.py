@@ -5,7 +5,7 @@ import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import math
 from tqdm import tqdm
-from src.spu_host_cal import method
+from .. import method
 from torch import nn
 
 
