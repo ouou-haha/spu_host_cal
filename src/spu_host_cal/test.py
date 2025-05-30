@@ -10,12 +10,12 @@ from data_tool import (
     load_bin_tensor, save_tensor_bin, sim, sim_bin, dma_format_convert,
     load_int4_from_bin, save_int4_as_bin, float32_to_bf24_as_float32,
     generate_matrix, save_tensor_as_decimal_txt, get_topk_index,
-    bank_sparse, bank_quantize, gen_data_d2sqnt,
+    bank_quantize, gen_data_d2sqnt,
     gen_data_sparse_mask, gen_data_sparse_hp_lp,
     gen_data_dense_with_scale, spu_host_data, gen_data_topk,
     gen_data_s2ddqnt, s2ddqnt, gen_data_qnt
 )
-from tmp.sparse_nbits import (
+from src.spu_host_cal.tmp.sparse_nbits import (
     MFSparseNbits
 )
 

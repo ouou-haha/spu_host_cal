@@ -505,6 +505,17 @@ def gen_data_sparse_mask(
     }
 
 
+def is_dandiao(matrix, mode='i'):
+    flattened = matrix.flatten()
+    diff = torch.diff(flattened)
+    if (diff >= 0).all():
+        return "increasing"   # 判断是否所有差值 >= 0
+    elif (diff <= 0).all():
+        return "decreasing"   # 判断是否所有差值 <= 0
+    else:
+        return "none"
+
+
 def sort(x: torch.Tensor, order: int = 0, bitonic: int = 0):
     """
     x      : Tensor，形状 (8, n)，代表 8 个 bank。
@@ -514,7 +525,7 @@ def sort(x: torch.Tensor, order: int = 0, bitonic: int = 0):
              2  -> 每 2 个 bank 翻转一次    (↑↑↓↓↑↑↓↓)
              4  -> 每 4 个 bank 翻转一次    (↑↑↑↑↓↓↓↓)
     """
-    assert x.dim() == 2 and x.size(0) == 8
+    # assert x.dim() == 2 and x.size(0) == 8
     n_bank = x.size(0)
     sorted_banks = []
 
@@ -532,13 +543,13 @@ def sort(x: torch.Tensor, order: int = 0, bitonic: int = 0):
 
 
 def compare(
-    val:  torch.Tensor,          # (8, 64)
-    stride: int = 1,
-    flip:   int = 1,
-    mode:   int = 0,
-    idx:  torch.Tensor = None,   # (8, 64) or None
+        val: torch.Tensor,  # (8, 64)
+        stride: int = 1,
+        flip: int = 1,
+        mode: int = 0,
+        idx: torch.Tensor = None,  # (8, 64) or None
 ):
-    assert val.shape == (8, 64)
+    assert val.size(0) == 8
     if idx is not None:
         assert idx.shape == val.shape
 
@@ -561,11 +572,11 @@ def compare(
 
             v0, v1 = out_val[b0], out_val[b1]
 
-            if curr_mode == 0:                     # Min-Max
+            if curr_mode == 0:  # Min-Max
                 mask = v0 <= v1
                 new0 = torch.where(mask, v0, v1)
                 new1 = torch.where(mask, v1, v0)
-            else:                                  # Max-Min
+            else:  # Max-Min
                 mask = v0 >= v1
                 new0 = torch.where(mask, v0, v1)
                 new1 = torch.where(mask, v1, v0)
@@ -579,7 +590,6 @@ def compare(
                 out_idx[b0], out_idx[b1] = new_i0, new_i1
 
     return out_val
-
 
 
 def gen_data_sparse_hp_lp(
