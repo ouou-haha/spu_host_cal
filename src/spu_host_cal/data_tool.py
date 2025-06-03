@@ -57,7 +57,7 @@ def save_tensor_bin(input_tensor: torch.Tensor, path: str, dtype: str = None):
     else:
         if dtype.lower() == INT4:
             input_tensor = input_tensor.to(torch.int8)
-            save_int4_as_bin(tensor, path)
+            save_int4_as_bin(input_tensor, path)
         elif dtype.lower() == BF16:
             input_tensor.view(torch.float16).numpy().tofile(path)
         elif dtype.lower() in (FP32, INT8):
