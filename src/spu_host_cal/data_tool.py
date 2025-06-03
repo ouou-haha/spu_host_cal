@@ -426,7 +426,7 @@ def gen_data_qnt(
         input_dtype: str = BF16,
         out_dtype: str = INT8,
         bank_size: int = 64,
-):
+) -> Dict[str, torch.Tensor]:
     if input_dtype.lower() not in BF16:
         raise ValueError(f"unsupported indtype")
     bank_num = int(c / bank_size)
@@ -505,18 +505,18 @@ def gen_data_sparse_mask(
     }
 
 
-def is_dandiao(matrix, mode='i'):
+def is_dandiao(matrix, mode='i') -> str:
     flattened = matrix.flatten()
     diff = torch.diff(flattened)
     if (diff >= 0).all():
-        return "increasing"   # 判断是否所有差值 >= 0
+        return "increasing"  # 判断是否所有差值 >= 0
     elif (diff <= 0).all():
-        return "decreasing"   # 判断是否所有差值 <= 0
+        return "decreasing"  # 判断是否所有差值 <= 0
     else:
         return "none"
 
 
-def sort(x: torch.Tensor, order: int = 0, bitonic: int = 0):
+def sort(x: torch.Tensor, order: int = 0, bitonic: int = 0) -> torch.Tensor:
     """
     x      : Tensor，形状 (8, n)，代表 8 个 bank。
     order  : 0 = 升序，1 = 降序（基准方向）
@@ -543,17 +543,17 @@ def sort(x: torch.Tensor, order: int = 0, bitonic: int = 0):
 
 
 def compare(
-        val: torch.Tensor,  # (8, 64)
+        input_tensor: torch.Tensor,  # (8, 64)
         stride: int = 1,
         flip: int = 1,
         mode: int = 0,
         idx: torch.Tensor = None,  # (8, 64) or None
-):
-    assert val.size(0) == 8
+) -> torch.Tensor:
+    assert input_tensor.size(0) == 8
     if idx is not None:
-        assert idx.shape == val.shape
+        assert idx.shape == input_tensor.shape
 
-    out_val = val.clone()
+    out_val = input_tensor.clone()
     out_idx = None if idx is None else idx.clone()
 
     reverse = 0 if mode == 1 else 1
