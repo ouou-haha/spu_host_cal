@@ -1,9 +1,9 @@
-# spu_host_cal
-
-## 安装
 
 ```bash
-git clone THIS_REPO
-cd sparseopt
+git clone https://github.com/ouou-haha/spu_host_cal.git
+cd spu_host_cal
+git checkout package
 pip3 install -e .
 ```
+
+
