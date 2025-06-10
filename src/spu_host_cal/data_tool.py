@@ -337,7 +337,10 @@ def gen_data_topk(w: int,
                   k: int,
                   idtype: str,
                   ) -> Dict[str, Any]:
-    input_tensor = generate_matrix(w, c, dtype_torch_map[idtype])
+    # input_tensor = generate_matrix(w, c, dtype_torch_map[idtype])
+    input_tensor = torch.arange(0, c).reshape(1, c).to(torch.float32)
+    input_tensor = input_tensor[:, torch.randperm(tensor.size(1))]
+
     output_tensor = torch.zeros(w, k, dtype=input_tensor.dtype)
     index = torch.zeros(w, k, dtype=torch.int32)
     for i in range(w):
