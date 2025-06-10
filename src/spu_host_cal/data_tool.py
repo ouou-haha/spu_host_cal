@@ -702,15 +702,15 @@ def gen_data_sparse_hp_lp(
     res_host = res_host.to(dtype_torch_map.get(out_dtype))
 
     # for cmodel seg=2
-    if nnz == 8:
-        if c != 128:
-            raise ValueError(f"c must equal to 128 when nnz=8(for test)")
-        else:
-            weight_qnt = dma_format_convert(k, c, weight_qnt, 64, 1)
-            weight_scale = dma_format_convert(k, 2, weight_scale, 1, 1)
-            hp_scale = dma_format_convert(w, 2, hp_scale, 1, 1)
-            lp_tensor_encoded = dma_format_convert(w, c, lp_tensor_encoded, 64, 1)
-            lp_scale = dma_format_convert(w, 2, lp_scale, 1, 1)
+    # if nnz == 8:
+    #     if c != 128:
+    #         raise ValueError(f"c must equal to 128 when nnz=8(for test)")
+    #     else:
+    #         weight_qnt = dma_format_convert(k, c, weight_qnt, 64, 1)
+    #         weight_scale = dma_format_convert(k, 2, weight_scale, 1, 1)
+    #         hp_scale = dma_format_convert(w, 2, hp_scale, 1, 1)
+    #         lp_tensor_encoded = dma_format_convert(w, c, lp_tensor_encoded, 64, 1)
+    #         lp_scale = dma_format_convert(w, 2, lp_scale, 1, 1)
 
     return {
         'input_tensor': input_matrix,
