@@ -336,6 +336,7 @@ def gen_data_topk(w: int,
                   c: int,
                   k: int,
                   idtype: str,
+                  offset: int = 0,
                   ) -> Dict[str, Any]:
     # input_tensor = generate_matrix(w, c, dtype_torch_map[idtype])
     input_tensor = torch.arange(0, c).reshape(1, c).to(torch.float32)
@@ -347,7 +348,7 @@ def gen_data_topk(w: int,
         block = input_tensor[i].clone()
         _, block_index, block_topk = get_topk_index(block, k)
         output_tensor[i] = block_topk
-        index[i] = block_index
+        index[i] = block_index + offset
 
     return {
         'input_tensor': input_tensor,
