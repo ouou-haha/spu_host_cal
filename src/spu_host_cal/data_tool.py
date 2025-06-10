@@ -150,6 +150,13 @@ def float32_to_bf24_as_float32(arr: np.ndarray) -> np.ndarray:
     return bits_bf24.view(np.float32)
 
 
+def float32_to_bf24_as_float32_torch(arr: torch.Tensor) -> torch.Tensor:
+    assert arr.dtype == torch.float32, "only support float32"
+    bits = arr.view(torch.int32)
+    bits_bf24 = torch.bitwise_and(bits, 0xFFFFFF00)
+    return bits_bf24.view(torch.float32)
+
+
 def generate_matrix(w: int, c: int, datatype: torch.dtype) -> torch.Tensor:
     if datatype == torch.int8:
         return torch.randint(-10, 10, (w, c), dtype=torch.int8)
@@ -548,7 +555,7 @@ def compare(
         flip: int = 1,
         mode: int = 0,
         idx: torch.Tensor = None,  # (8, 64) or None
-) -> torch.Tensor:
+):
     assert input_tensor.size(0) == 8
     if idx is not None:
         assert idx.shape == input_tensor.shape
@@ -589,7 +596,7 @@ def compare(
                 new_i1 = torch.where(mask, i1, i0)
                 out_idx[b0], out_idx[b1] = new_i0, new_i1
 
-    return out_val
+    return out_val, out_idx
 
 
 def gen_data_sparse_hp_lp(
