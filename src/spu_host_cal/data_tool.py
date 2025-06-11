@@ -735,7 +735,7 @@ def gen_data_dense_with_scale(
 ) -> Dict[str, Any]:
     if input_dtype not in (INT8, FP8E5M2, FP8E4M3) or weight_dtype not in (INT8, FP8E5M2, FP8E4M3):
         raise ValueError(f"only support int8, fp8 for lp gemm")
-    bank_size = 64
+    bank_size = 64 if c >= 64 else c
     bank_num = int(c / bank_size)
     bank_num = 1 if bank_num == 0 else bank_num
     input_tensor = generate_matrix(w, c, torch.bfloat16)
