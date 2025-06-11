@@ -825,7 +825,7 @@ def gen_data_dense_with_scale(
     # weight_dqnt = weight_qnt.to(torch.float32).reshape(k, bank_num, bank_size) * weight_scale.unsqueeze(-1)
     # res_host = input_dqnt.reshape(w, c) @ weight_dqnt.reshape(k, c).T
 
-    res_host = input_qnt.to(torch.float32).reshape(w, c) @
+    res_host = input_qnt.to(torch.float32).reshape(w, c) @ weight_qnt.to(torch.float32).reshape(k, c).T * input_scale * weight_scale.T
     res_host = res_host.to(torch.bfloat16)
     return {
         'input_tensor': input_qnt,
