@@ -26,6 +26,24 @@ INT32: str = "int32"
 UINT32: str = "uint32"
 NA: str = "na"
 
+dict_data_type_str_to_width_bytes = {
+    "int4":         4,
+    "fp4":          4,
+    "int8":         8,
+    "uint8":        8,
+    "fp8_e5m2":     8,
+    "fp8_e4m3":     8,
+    "int16":        16,
+    "bf16":         16,
+    "fp16":         16,
+    "fp32":         32,
+    "int32":        32,
+    "uint32":       32,
+    "uint64":       64,
+    "int64":        64,
+    "fp64":         64,
+}
+
 dtype_torch_map = {
     "int8": torch.int8,
     "bf16": torch.bfloat16,
@@ -48,7 +66,8 @@ def load_bin_tensor(path: str, dtype: str):
     elif dtype == FP8E5M2:
         return torch.from_numpy(np.fromfile(path, dtype=np.uint8)).view(torch.float8_e5m2)
     elif dtype == FP8E4M3:
-        return torch.from_numpy(np.fromfile(path, dtype=np.uint8)).view(torch.float8_e4m3fn)  # torch_fp8152 .view(torch.uint8).numpy().tofile()
+        return torch.from_numpy(np.fromfile(path, dtype=np.uint8)).view(
+            torch.float8_e4m3fn)  # torch_fp8152 .view(torch.uint8).numpy().tofile()
     else:
         return "unsupported dtype"
 
@@ -99,6 +118,39 @@ def sim_bin(bin_file_path1: str, bin_file_path2: str, dtype: str):
           f"sim:{F.cosine_similarity(A_flat, B_flat, dim=0).item()}")
 
     return close.all().item()
+
+
+def sim_bits(tensor1: torch.Tensor, tensor2: torch.Tensor, dtype: str):
+    bit_width = dict_data_type_str_to_width_bytes[dtype]
+
+    def tensor_to_binary(tensor: torch.Tensor, bit_width: int):
+        if isinstance(tensor, torch.Tensor):
+            tensor = tensor.view(torch.uint16).numpy()  # 将 PyTorch Tensor 转换为 NumPy 数组
+        binary_strs = np.vectorize(lambda x: format(x, f'0{bit_width}b'))(tensor)
+        return binary_strs
+
+    def compare_bits(bin_str1, bin_str2):
+        return sum(bit1 != bit2 for bit1, bit2 in zip(bin_str1, bin_str2))
+
+    binary_tensor1 = tensor_to_binary(tensor1, bit_width)
+    binary_tensor2 = tensor_to_binary(tensor2, bit_width)
+
+    if binary_tensor1.shape != binary_tensor2.shape:
+        raise ValueError("different shape !")
+
+    diff_tensor = np.zeros_like(tensor1.to(torch.float32), dtype=int)
+    max_diff = 0
+
+    for idx in np.ndindex(binary_tensor1.shape):
+        diff = compare_bits(binary_tensor1[idx], binary_tensor2[idx])
+        diff_tensor[idx] = diff
+        max_diff += diff
+        if diff > 0:
+            print(diff)
+            print(binary_tensor1[idx])
+            print(binary_tensor2[idx])
+
+    return diff_tensor, max_diff
 
 
 def dma_format_convert(w, c, input_tensor, bank_size, forward):
@@ -276,7 +328,8 @@ def bank_quantize(block: torch.Tensor, out_dtype: str, sym: bool = True) -> Dict
     dnt_scale = torch.tensor([1.0 / scale]) if scale != 0 else torch.tensor([0.0])
 
     # for asymmetric quantization dequant
-    deqnt_block = (qnt_block * dnt_scale + mean).to(torch.bfloat16)
+    deqnt_block = (qnt_block * dnt_scale + mean).to(torch.bfloat16) if out_dtype not in (
+    FP8E5M2, FP8E4M3) else torch.tensor([0])
     return {
         'input': ori_block,
         'scale': dnt_scale,
