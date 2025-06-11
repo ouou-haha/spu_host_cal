@@ -821,11 +821,11 @@ def gen_data_dense_with_scale(
             weight_qnt[i][j * bank_size: (j + 1) * bank_size] = block_qnt['qnt_block']
             weight_scale[i][j] = torch.from_numpy(float32_to_bf24_as_float32(block_qnt['scale'].numpy()))
 
-    # input_dqnt = input_qnt.to(torch.float32).reshape(w, bank_num, bank_size) * input_scale.unsqueeze(-1)
-    # weight_dqnt = weight_qnt.to(torch.float32).reshape(k, bank_num, bank_size) * weight_scale.unsqueeze(-1)
-    # res_host = input_dqnt.reshape(w, c) @ weight_dqnt.reshape(k, c).T
+    input_dqnt = input_qnt.to(torch.float32).reshape(w, bank_num, bank_size) * input_scale.unsqueeze(-1)
+    weight_dqnt = weight_qnt.to(torch.float32).reshape(k, bank_num, bank_size) * weight_scale.unsqueeze(-1)
+    res_host = input_dqnt.reshape(w, c) @ weight_dqnt.reshape(k, c).T
 
-    res_host = input_qnt.to(torch.float32).reshape(w, c) @ weight_qnt.to(torch.float32).reshape(k, c).T * input_scale * weight_scale.T
+    # res_host = input_qnt.to(torch.float32).reshape(w, c) @ weight_qnt.to(torch.float32).reshape(k, c).T * input_scale * weight_scale.T
     res_host = res_host.to(torch.bfloat16)
     return {
         'input_tensor': input_qnt,
