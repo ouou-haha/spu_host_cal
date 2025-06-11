@@ -128,7 +128,7 @@ def sim_bin(bin_file_path1: str, bin_file_path2: str, dtype: str):
     return close.all().item()
 
 
-def sim_bits(tensor1: torch.Tensor, tensor2: torch.Tensor, dtype: str):
+def sim_bits(tensor1: torch.Tensor, tensor2: torch.Tensor, dtype: str, show: bool = False):
     bit_width = dict_data_type_str_to_width_bytes[dtype]
 
     def tensor_to_binary(tensor: torch.Tensor, bit_width: int):
@@ -146,19 +146,21 @@ def sim_bits(tensor1: torch.Tensor, tensor2: torch.Tensor, dtype: str):
     if binary_tensor1.size != binary_tensor2.size:
         raise ValueError("different shape !")
 
-    diff_tensor = np.zeros_like(tensor1.to(torch.float32), dtype=int)
+    binary_tensor1_f = binary_tensor1.flatten()
+    binary_tensor2_f = binary_tensor2.flatten()
+
+    diff_list = []
     max_diff = 0
-
-    for idx in np.ndindex(binary_tensor1.shape):
-        diff = compare_bits(binary_tensor1[idx], binary_tensor2[idx])
-        diff_tensor[idx] = diff
+    index = 0
+    for bin_str1, bin_str2 in zip(binary_tensor1_f, binary_tensor2_f):
+        index+=1
+        diff = compare_bits(bin_str1, bin_str2)
+        diff_list.append(diff)
         max_diff = diff if max_diff < diff else max_diff
-        if diff > 0:
-            print(diff)
-            print(binary_tensor1[idx])
-            print(binary_tensor2[idx])
+        if diff > 0 and show:
+            print(f"index : {index}   diff: {diff}  value1: {bin_str1}  value2: {bin_str2}")
 
-    return diff_tensor, max_diff
+    return max_diff
 
 
 def dma_format_convert(w, c, input_tensor, bank_size, forward):
