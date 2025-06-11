@@ -737,6 +737,7 @@ def gen_data_dense_with_scale(
         raise ValueError(f"only support int8, fp8 for lp gemm")
     bank_size = 64
     bank_num = int(c / bank_size)
+    bank_num = 1 if bank_num == 0 else bank_num
     input_tensor = generate_matrix(w, c, torch.bfloat16)
     weight_tensor = generate_matrix(k, c, torch.bfloat16)
 
