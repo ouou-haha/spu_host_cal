@@ -79,6 +79,10 @@ def save_tensor_bin(input_tensor: torch.Tensor, path: str, dtype: str = None):
             input_tensor.view(torch.float16).numpy().tofile(path)
         elif input_tensor.dtype in (torch.float32, torch.int8):
             input_tensor.numpy().tofile(path)
+        elif input_tensor.dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
+            input_tensor.view(torch.uint8).numpy().tofile(path)
+        else:
+            raise ValueError(f"unsupported dtype: {dtype}")
     else:
         if dtype.lower() == INT4:
             input_tensor = input_tensor.to(torch.int8)
@@ -87,6 +91,10 @@ def save_tensor_bin(input_tensor: torch.Tensor, path: str, dtype: str = None):
             input_tensor.view(torch.float16).numpy().tofile(path)
         elif dtype.lower() in (FP32, INT8):
             input_tensor.numpy().tofile(path)
+        elif dtype.lower() in (FP8E5M2, FP8E4M3):
+            input_tensor.view(torch.uint8).numpy().tofile(path)
+        else:
+            raise ValueError(f"unsupported dtype: {dtype}")
     return True
 
 
