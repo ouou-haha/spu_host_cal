@@ -45,6 +45,12 @@ def load_bin_tensor(path: str, dtype: str):
         return torch.from_numpy(np.fromfile(path, dtype=np.int32))
     elif dtype == INT4:
         return load_int4_from_bin(path)
+    elif dtype == FP8E5M2:
+        return torch.from_numpy(np.fromfile(path, dtype=np.uint8)).view(torch.float8_e5m2)
+    elif dtype == FP8E4M3:
+        return torch.from_numpy(np.fromfile(path, dtype=np.uint8)).view(torch.float8_e4m3fn)  # torch_fp8152 .view(torch.uint8).numpy().tofile()
+    else:
+        return "unsupported dtype"
 
 
 def save_tensor_bin(input_tensor: torch.Tensor, path: str, dtype: str = None):
