@@ -135,7 +135,7 @@ def sim_bits(tensor1: torch.Tensor, tensor2: torch.Tensor, dtype: str):
     binary_tensor1 = tensor_to_binary(tensor1, bit_width)
     binary_tensor2 = tensor_to_binary(tensor2, bit_width)
 
-    if binary_tensor1.shape != binary_tensor2.shape:
+    if binary_tensor1.size != binary_tensor2.size:
         raise ValueError("different shape !")
 
     diff_tensor = np.zeros_like(tensor1.to(torch.float32), dtype=int)
@@ -144,7 +144,7 @@ def sim_bits(tensor1: torch.Tensor, tensor2: torch.Tensor, dtype: str):
     for idx in np.ndindex(binary_tensor1.shape):
         diff = compare_bits(binary_tensor1[idx], binary_tensor2[idx])
         diff_tensor[idx] = diff
-        max_diff += diff
+        max_diff = diff if max_diff < diff else max_diff
         if diff > 0:
             print(diff)
             print(binary_tensor1[idx])
@@ -821,9 +821,11 @@ def gen_data_dense_with_scale(
             weight_qnt[i][j * bank_size: (j + 1) * bank_size] = block_qnt['qnt_block']
             weight_scale[i][j] = torch.from_numpy(float32_to_bf24_as_float32(block_qnt['scale'].numpy()))
 
-    input_dqnt = input_qnt.to(torch.float32).reshape(w, bank_num, bank_size) * input_scale.unsqueeze(-1)
-    weight_dqnt = weight_qnt.to(torch.float32).reshape(k, bank_num, bank_size) * weight_scale.unsqueeze(-1)
-    res_host = input_dqnt.reshape(w, c) @ weight_dqnt.reshape(k, c).T
+    # input_dqnt = input_qnt.to(torch.float32).reshape(w, bank_num, bank_size) * input_scale.unsqueeze(-1)
+    # weight_dqnt = weight_qnt.to(torch.float32).reshape(k, bank_num, bank_size) * weight_scale.unsqueeze(-1)
+    # res_host = input_dqnt.reshape(w, c) @ weight_dqnt.reshape(k, c).T
+
+    res_host = input_qnt.to(torch.float32).reshape(w, c) @
     res_host = res_host.to(torch.bfloat16)
     return {
         'input_tensor': input_qnt,
