@@ -45,10 +45,11 @@ dict_data_type_str_to_width_bytes = {
 }
 
 dtype_torch_map = {
-    "int8": torch.int8,
-    "bf16": torch.bfloat16,
-    "fp8_e4m3": torch.float8_e4m3fn,
-    "fp8_e5m2": torch.float8_e5m2,
+    INT8: torch.int8,
+    BF16: torch.bfloat16,
+    FP8E4M3: torch.float8_e4m3fn,
+    FP8E5M2: torch.float8_e5m2,
+    FP32: torch.float32,
 }
 
 
