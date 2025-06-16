@@ -27,21 +27,21 @@ UINT32: str = "uint32"
 NA: str = "na"
 
 dict_data_type_str_to_width_bytes = {
-    "int4":         4,
-    "fp4":          4,
-    "int8":         8,
-    "uint8":        8,
-    "fp8_e5m2":     8,
-    "fp8_e4m3":     8,
-    "int16":        16,
-    "bf16":         16,
-    "fp16":         16,
-    "fp32":         32,
-    "int32":        32,
-    "uint32":       32,
-    "uint64":       64,
-    "int64":        64,
-    "fp64":         64,
+    "int4": 4,
+    "fp4": 4,
+    "int8": 8,
+    "uint8": 8,
+    "fp8_e5m2": 8,
+    "fp8_e4m3": 8,
+    "int16": 16,
+    "bf16": 16,
+    "fp16": 16,
+    "fp32": 32,
+    "int32": 32,
+    "uint32": 32,
+    "uint64": 64,
+    "int64": 64,
+    "fp64": 64,
 }
 
 dtype_torch_map = {
@@ -153,7 +153,7 @@ def sim_bits(tensor1: torch.Tensor, tensor2: torch.Tensor, dtype: str, show: boo
     max_diff = 0
     index = 0
     for bin_str1, bin_str2 in zip(binary_tensor1_f, binary_tensor2_f):
-        index+=1
+        index += 1
         diff = compare_bits(bin_str1, bin_str2)
         diff_list.append(diff)
         max_diff = diff if max_diff < diff else max_diff
@@ -241,6 +241,24 @@ def save_tensor_as_decimal_txt(input_tensor: torch.Tensor, txt_file: str) -> Non
             else:
                 line = " ".join([str(float(x)) for x in row])
             f.write(line + " ")
+
+
+def load_tsr_from_txt(path: str, dtype: str = FP32):
+    try:
+        with open(path, 'r') as f:
+            lines = f.readlines()
+            data = []
+            for line in lines:
+                # 将每行的字符串转换为浮点数列表
+                row = [float(x) for x in line.strip().split()]
+                data.append(row)
+            # 将数据转换为 PyTorch 张量并调整数据类型
+            tsr = torch.tensor(data, dtype=dtype_torch_map[dtype])
+            return tsr
+    except FileNotFoundError:
+        raise FileNotFoundError(f"File not found: {path}")
+    except Exception as e:
+        raise ValueError(f"Failed to load tensor from {path}. Error: {str(e)}")
 
 
 def get_topk_index(bank_vec: torch.Tensor, k: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -338,7 +356,7 @@ def bank_quantize(block: torch.Tensor, out_dtype: str, sym: bool = True) -> Dict
 
     # for asymmetric quantization dequant
     deqnt_block = (qnt_block * dnt_scale + mean).to(torch.bfloat16) if out_dtype not in (
-    FP8E5M2, FP8E4M3) else torch.tensor([0])
+        FP8E5M2, FP8E4M3) else torch.tensor([0])
     return {
         'input': ori_block,
         'scale': dnt_scale,
