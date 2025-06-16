@@ -302,10 +302,11 @@ def bank_sparse(block: torch.Tensor, nnz: int) -> Dict[str, Any]:
     }
 
 
-def fp32_2_fpx(scale: torch.Tensor, scale_bit: int) -> torch.Tensor:
-    scale = scale.float().view(torch.int32) \
+def fp32_2_fpx(scale: np.ndarray, scale_bit: int):
+    # truncate to scale_bit, and save f32
+    scale = scale.astype(np.float32).view(np.uint32) \
             // (2 ** (32 - scale_bit)) * (2 ** (32 - scale_bit))
-    return scale.view(torch.float32)
+    return scale.view(np.float32)
 
 
 def bank_quantize(block: torch.Tensor, out_dtype: str, sym: bool = True) -> Dict[str, torch.Tensor]:
@@ -366,7 +367,7 @@ def bank_quantize(block: torch.Tensor, out_dtype: str, sym: bool = True) -> Dict
         FP8E5M2, FP8E4M3) else torch.tensor([0])
     return {
         'input': ori_block,
-        'scale': fp32_2_fpx(dnt_scale, 19),
+        'scale': torch.from_numpy(fp32_2_fpx(dnt_scale.numpy(), 19)),
         'qnt_block': qnt_block,
         'dqnt_tensor': deqnt_block,
         'mean': mean,
