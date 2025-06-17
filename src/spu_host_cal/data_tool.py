@@ -307,7 +307,7 @@ def bank_sparse(block: torch.Tensor, nnz: int) -> Dict[str, Any]:
 
 def fp32_2_fpx(scale: np.ndarray, scale_bit: int):
     # truncate to scale_bit, and save f32
-    scale = scale.astype(np.float32).reshape(1, -1).view(np.uint32) \
+    scale = scale.astype(np.float32).view(np.uint32) \
             // (2 ** (32 - scale_bit)) * (2 ** (32 - scale_bit))
     return scale.view(np.float32)
 
