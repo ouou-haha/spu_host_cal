@@ -99,6 +99,30 @@ def save_tensor_bin(input_tensor: torch.Tensor, path: str, dtype: str = None):
     return True
 
 
+def compare_dec(gdt: np.ndarray, res: np.ndarray, is_float: bool = True):
+    gdt = gdt.flatten()
+    res = res.flatten()
+
+    # abs_diff
+    abs_diff = np.abs(gdt - res)
+    idx_0 = np.argmax(abs_diff)
+    max_abs_diff = abs_diff[idx_0]
+
+    # max_rel_diff_percent
+    rel_diff_percent = 100.0 * abs_diff / (np.abs(gdt) + 1e-12)
+    idx_1 = np.argmax(rel_diff_percent)
+    max_rel_diff_percent = rel_diff_percent[idx_1]
+
+    # cos
+    cos_sim = torch.nn.functional.cosine_similarity(torch.tensor(gdt), torch.tensor(res), dim=0)
+    cos_sim = 100.0 * cos_sim.item()
+    cos_sim = round(cos_sim, 9)
+    if is_float:
+        return cos_sim, max_rel_diff_percent, max_abs_diff, gdt[idx_1], res[idx_1]
+    else:
+        return cos_sim, max_rel_diff_percent, int(max_abs_diff), int(gdt[idx_0]), int(res[idx_0])
+
+
 def sim(A, B):
     A_flat = A.flatten().to(torch.float32)
     B_flat = B.flatten().to(torch.float32)
