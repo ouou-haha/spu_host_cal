@@ -344,7 +344,7 @@ def bank_quantize(block: torch.Tensor, out_dtype: str, sym: bool = True) -> Dict
     else:
         scale = 1.0
 
-    # scale = torch.from_numpy(fp32_2_fpx(scale.numpy(), 19))
+    scale = torch.from_numpy(fp32_2_fpx(scale.numpy(), 19))
     # print(f"scale:{1/scale}")
     if out_dtype == INT8:
         q_min, q_max = -127, 127
