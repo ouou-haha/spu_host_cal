@@ -307,7 +307,7 @@ def bank_sparse(block: torch.Tensor, nnz: int) -> Dict[str, Any]:
 
 def fp32_2_fpx(scale: np.ndarray, scale_bit: int):
     # truncate to scale_bit, and save f32
-    scale = scale.astype(np.float32).view(np.uint32) \
+    scale = scale.astype(np.float32).reshape(1, -1).view(np.uint32) \
             // (2 ** (32 - scale_bit)) * (2 ** (32 - scale_bit))
     return scale.view(np.float32)
 
@@ -331,7 +331,7 @@ def bank_quantize(block: torch.Tensor, out_dtype: str, sym: bool = True) -> Dict
     max_abs = torch.max(torch.abs(block))
     # print(f"mean:{mean}")
     # print(f"block:{block}")
-    max_abs = torch.from_numpy(fp32_2_fpx(max_abs.numpy(), 19))  # 19
+    max_abs = torch.from_numpy(fp32_2_fpx(max_abs.numpy(), 19)[0])  # 19
 
     if out_dtype == FP8E5M2:
         scale = 57344.0 / max_abs
