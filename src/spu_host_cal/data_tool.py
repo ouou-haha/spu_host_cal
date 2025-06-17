@@ -233,14 +233,17 @@ def generate_matrix(w: int, c: int, datatype: torch.dtype) -> torch.Tensor:
         return torch.randn(w, c).to(datatype)
 
 
-def save_tensor_as_decimal_txt(input_tensor: torch.Tensor, txt_file: str) -> None:
+def save_tensor_as_decimal_txt(input_tensor: torch.Tensor, txt_file: str, keep_num: bool = False) -> None:
     input_tensor = input_tensor.reshape(1, -1)
     with open(txt_file, 'w') as f:
         for row in input_tensor:
             if input_tensor.dtype in (torch.int8, torch.int32):
                 line = " ".join([str(int(x)) for x in row])
             else:
-                line = " ".join([str(float(x)) for x in row])
+                if keep_num is False:
+                    line = " ".join([str(float(x)) for x in row])
+                else:
+                    line = " ".join([f"{float(x):.7f}" for x in row])
             f.write(line + " ")
 
 
