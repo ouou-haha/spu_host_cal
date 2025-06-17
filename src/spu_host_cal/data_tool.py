@@ -331,7 +331,7 @@ def bank_quantize(block: torch.Tensor, out_dtype: str, sym: bool = True) -> Dict
     max_abs = torch.max(torch.abs(block))
     # print(f"mean:{mean}")
     # print(f"block:{block}")
-    max_abs = torch.from_numpy(fp32_2_fpx(max_abs.numpy(), 19)[0])  # 19
+    max_abs = torch.from_numpy(fp32_2_fpx(max_abs.reshape(1, -1).numpy(), 19)[0])  # to bf19
 
     if out_dtype == FP8E5M2:
         scale = 57344.0 / max_abs
