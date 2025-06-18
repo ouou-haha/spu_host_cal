@@ -52,6 +52,8 @@ dtype_torch_map = {
     FP32: torch.float32,
 }
 
+EPSILON = 1e-12
+
 
 def load_bin_tensor(path: str, dtype: str):
     if dtype == BF16:
@@ -99,6 +101,15 @@ def save_tensor_bin(input_tensor: torch.Tensor, path: str, dtype: str = None):
     return True
 
 
+def cosine_similarity(left: np.ndarray, right: np.ndarray) -> float:
+    dot_product = np.dot(left, right)
+    norm_left = np.linalg.norm(left)
+    norm_right = np.linalg.norm(right)
+    cos_sim = dot_product / (norm_left * norm_right)
+
+    return cos_sim
+
+
 def compare_dec_tsr(left: np.ndarray, right: np.ndarray, is_float: bool = True):
     left = left.flatten()
     right = right.flatten()
@@ -109,21 +120,20 @@ def compare_dec_tsr(left: np.ndarray, right: np.ndarray, is_float: bool = True):
     max_abs_diff = abs_diff[idx_0]
 
     # max_rel_diff_percent
-    rel_diff_percent = 100.0 * abs_diff / (np.abs(left) + 1e-12)
+    rel_diff_percent = 100.0 * abs_diff / (np.abs(left) + EPSILON)
     idx_1 = np.argmax(rel_diff_percent)
     max_rel_diff_percent = rel_diff_percent[idx_1]
 
     # cos
-    cos_sim = torch.nn.functional.cosine_similarity(torch.tensor(left), torch.tensor(right), dim=0)
-    cos_sim = 100.0 * cos_sim.item()
-    cos_sim = round(cos_sim, 9)
+    cos_sim = cosine_similarity(left, right)
+    cos_sim = 100.0 * cos_sim
     if is_float:
         return cos_sim, max_rel_diff_percent, max_abs_diff, idx_1, left[idx_1], right[idx_1]
     else:
         return cos_sim, max_rel_diff_percent, int(max_abs_diff), idx_0, int(left[idx_0]), int(right[idx_0])
 
 
-def diff_tsr_txt(path1: str, path2: str):
+def diff_tsr_txt(path1: str, path2: str) -> None:
     if not os.path.exists(path1):
         print(f"[Error] file do not exit: {path1}")
         return
@@ -149,7 +159,7 @@ def diff_tsr_txt(path1: str, path2: str):
 def sim(A, B):
     A_flat = A.flatten().to(torch.float32)
     B_flat = B.flatten().to(torch.float32)
-    close = torch.isclose(A_flat, B_flat)
+    # close = torch.isclose(A_flat, B_flat)
     # print(f"Compare {len(A_flat)}\n");
 
     return F.cosine_similarity(A_flat, B_flat, dim=0).item()
