@@ -99,28 +99,51 @@ def save_tensor_bin(input_tensor: torch.Tensor, path: str, dtype: str = None):
     return True
 
 
-def compare_dec(gdt: np.ndarray, res: np.ndarray, is_float: bool = True):
-    gdt = gdt.flatten()
-    res = res.flatten()
+def compare_dec_tsr(left: np.ndarray, right: np.ndarray, is_float: bool = True):
+    left = left.flatten()
+    right = right.flatten()
 
     # abs_diff
-    abs_diff = np.abs(gdt - res)
+    abs_diff = np.abs(left - right)
     idx_0 = np.argmax(abs_diff)
     max_abs_diff = abs_diff[idx_0]
 
     # max_rel_diff_percent
-    rel_diff_percent = 100.0 * abs_diff / (np.abs(gdt) + 1e-12)
+    rel_diff_percent = 100.0 * abs_diff / (np.abs(left) + 1e-12)
     idx_1 = np.argmax(rel_diff_percent)
     max_rel_diff_percent = rel_diff_percent[idx_1]
 
     # cos
-    cos_sim = torch.nn.functional.cosine_similarity(torch.tensor(gdt), torch.tensor(res), dim=0)
+    cos_sim = torch.nn.functional.cosine_similarity(torch.tensor(left), torch.tensor(right), dim=0)
     cos_sim = 100.0 * cos_sim.item()
     cos_sim = round(cos_sim, 9)
     if is_float:
-        return cos_sim, max_rel_diff_percent, max_abs_diff, gdt[idx_1], res[idx_1]
+        return cos_sim, max_rel_diff_percent, max_abs_diff, idx_1, left[idx_1], right[idx_1]
     else:
-        return cos_sim, max_rel_diff_percent, int(max_abs_diff), int(gdt[idx_0]), int(res[idx_0])
+        return cos_sim, max_rel_diff_percent, int(max_abs_diff), idx_0, int(left[idx_0]), int(right[idx_0])
+
+
+def diff_tsr_txt(path1: str, path2: str):
+    if not os.path.exists(path1):
+        print(f"[Error] file do not exit: {path1}")
+        return
+    if not os.path.exists(path2):
+        print(f"[Error] file do not exit: {path2}")
+        return
+    gdt = np.loadtxt(path1)
+    res = np.loadtxt(path2)
+    if gdt.size != res.size:
+        print(f"[Error] shape must be same: {gdt.size} and {res.size}")
+        return
+    is_float = np.issubdtype(gdt.dtype, np.floating) or np.issubdtype(res.dtype, np.floating)
+    res = compare_dec_tsr(gdt, res, is_float)
+
+    cos_sim, max_rel_diff_percent, max_abs_diff, idx_1, gdt_val, res_val = res
+    info_print = f"{cos_sim:.7f}% ***" + f"{max_rel_diff_percent:.7f}%***" + \
+                 f"{max_abs_diff}***" + f"{idx_1}***" + f"{gdt_val}***" + f"{res_val}"
+    print("# COS_SIM***MAX_REL_DIFF***MAX_ABS_DIFF***INDEX***VALUE_PRE***VALUE_AFTER")
+    print(info_print)
+    return
 
 
 def sim(A, B):
