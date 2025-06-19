@@ -322,6 +322,93 @@ def load_tsr_from_txt(path: str, dtype: str = FP32):
         raise ValueError(f"Failed to load tensor from {path}. Error: {str(e)}")
 
 
+def is_dandiao(matrix, mode='i') -> str:
+    flattened = matrix.flatten()
+    diff = torch.diff(flattened)
+    if (diff >= 0).all():
+        return "increasing"  # 判断是否所有差值 >= 0
+    elif (diff <= 0).all():
+        return "decreasing"  # 判断是否所有差值 <= 0
+    else:
+        return "none"
+
+
+def sort(x: torch.Tensor, order: int = 0, bitonic: int = 0) -> torch.Tensor:
+    """
+    x      : Tensor，形状 (8, n)，代表 8 个 bank。
+    order  : 0 = 升序，1 = 降序（基准方向）
+    bitonic: 0  -> 所有 bank 方向一致
+             1  -> 每 1 个 bank 翻转一次    (↑↓↑↓↑↓↑↓)
+             2  -> 每 2 个 bank 翻转一次    (↑↑↓↓↑↑↓↓)
+             4  -> 每 4 个 bank 翻转一次    (↑↑↑↑↓↓↓↓)
+    """
+    # assert x.dim() == 2 and x.size(0) == 8
+    n_bank = x.size(0)
+    sorted_banks = []
+
+    reverse_base = 0 if order == 1 else 1
+    for i in range(n_bank):
+        curr_order = order
+        if bitonic:
+            flip = (i // bitonic) % 2 != 0
+            if flip:
+                curr_order = reverse_base
+        vals, _ = torch.sort(x[i], descending=bool(curr_order))
+        sorted_banks.append(vals)
+
+    return torch.stack(sorted_banks, dim=0)
+
+
+def compare(
+        input_tensor: torch.Tensor,  # (8, 64)
+        stride: int = 1,
+        flip: int = 1,
+        mode: int = 0,
+        idx: torch.Tensor = None,  # (8, 64) or None
+):
+    assert input_tensor.size(0) == 8
+    if idx is not None:
+        assert idx.shape == input_tensor.shape
+
+    out_val = input_tensor.clone()
+    out_idx = None if idx is None else idx.clone()
+
+    reverse = 0 if mode == 1 else 1
+    stride_iters = 4 // stride
+    cmp_idx = 0
+
+    for ii in range(stride_iters):
+        for jj in range(stride):
+            b0 = ii * stride * 2 + jj
+            b1 = b0 + stride
+
+            curr_mode = mode
+            if flip and (cmp_idx // flip) % 2 == 1:
+                curr_mode = reverse
+            cmp_idx += 1
+
+            v0, v1 = out_val[b0], out_val[b1]
+
+            if curr_mode == 0:  # Min-Max
+                mask = v0 <= v1
+                new0 = torch.where(mask, v0, v1)
+                new1 = torch.where(mask, v1, v0)
+            else:  # Max-Min
+                mask = v0 >= v1
+                new0 = torch.where(mask, v0, v1)
+                new1 = torch.where(mask, v1, v0)
+
+            out_val[b0], out_val[b1] = new0, new1
+
+            if out_idx is not None:
+                i0, i1 = out_idx[b0], out_idx[b1]
+                new_i0 = torch.where(mask, i0, i1)
+                new_i1 = torch.where(mask, i1, i0)
+                out_idx[b0], out_idx[b1] = new_i0, new_i1
+
+    return out_val, out_idx
+
+
 def get_topk_index(bank_vec: torch.Tensor, k: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     abs_bank_vec = torch.abs(bank_vec)
     indices = torch.arange(len(bank_vec))
@@ -565,7 +652,8 @@ def gen_data_d2s(
     input_tensor = generate_matrix(w, c, dtype_torch_map[idtype])
 
     input_sparse = torch.zeros(w, bank_num, nnz, dtype=dtype_torch_map[odtype])
-    bitmasks = np.zeros((w, bank_num), dtype=np.uint32) if bank_size == 32 else np.zeros((w, bank_num), dtype=np.uint64)
+    bitmasks = np.zeros((w, bank_num), dtype=np.uint32) if bank_size == 32 \
+        else np.zeros((w, bank_num), dtype=np.uint64)
     index = torch.zeros(w, bank_num, nnz, dtype=torch.int8)
     for i in range(w):
         for j in range(bank_num):
@@ -580,6 +668,77 @@ def gen_data_d2s(
         'output_tensor': input_sparse,
         'bitmasks': bitmasks,
         'index': index,
+    }
+
+
+def gen_data_d2s_hp_lp(
+        w: int = 64,
+        c: int = 64,
+        nnz: int = 32,
+        bank_size: int = 64,
+        hp_dtype: str = INT8,
+        lp_dtype: str = INT4,
+) -> Dict[str, torch.Tensor]:
+    if nnz not in (4, 8, 16, 32, 64):
+        raise ValueError(f"unsupported nnz")
+    nnz = int(nnz)
+    if c < 64:
+        bank_size = c
+    bank_num = int(c / bank_size)
+    input_matrix = generate_matrix(w, c, torch.bfloat16)
+    hp_tensor = torch.zeros(w, nnz * bank_num, dtype=dtype_torch_map.get(hp_dtype))  # output
+    hp_tensor_zeros = torch.zeros(w, c, dtype=dtype_torch_map.get(hp_dtype))
+    lp_tensor_encoded = torch.zeros(w, c, dtype=torch.int8)  # int4 store in int8 temply
+    lp_tensor_zeros = torch.zeros(w, c, dtype=torch.int8)  # int4 store in int8 temply
+    hp_scale = torch.zeros(w, bank_num, dtype=torch.float32)
+    lp_scale = torch.zeros(w, bank_num, dtype=torch.float32)
+    bitmasks = np.zeros((w, bank_num), dtype=np.uint64)
+    sort_index = torch.zeros(w, bank_num, nnz, dtype=torch.int8)
+
+    for i in range(w):
+        for j in range(bank_num):
+            block = input_matrix[i][j * bank_size: (j + 1) * bank_size].to(torch.float32)
+            sparse_res = bank_sparse(block, nnz)
+            hp_sparse = sparse_res['hp_block']
+            lp_sparse = sparse_res['lp_block']
+            bm = sparse_res['bitmask']
+            sort_index[i][j] = sparse_res['sorted_topk_indices']
+
+            hp_sparse_qnt = bank_quantize(hp_sparse, hp_dtype)
+            lp_sparse_qnt = bank_quantize(lp_sparse, lp_dtype)
+            scale_hp_fp24 = torch.from_numpy(float32_to_bf24_as_float32(hp_sparse_qnt['scale'].numpy()))
+            scale_lp_fp24 = torch.from_numpy(float32_to_bf24_as_float32(lp_sparse_qnt['scale'].numpy()))
+
+            lp_tensor_encoded[i][j * bank_size: (j + 1) * bank_size][sparse_res['lp_indices']] = lp_sparse_qnt[
+                'qnt_block']
+            if lp_dtype == INT4:
+                lp_tensor_encoded[i][j * bank_size: (j + 1) * bank_size][
+                    sparse_res['sorted_topk_indices']] = -8 * torch.ones(nnz, dtype=torch.int8)
+            elif lp_dtype == INT8:
+                lp_tensor_encoded[i][j * bank_size: (j + 1) * bank_size][
+                    sparse_res['sorted_topk_indices']] = -128 * torch.ones(nnz, dtype=torch.int8)
+
+            hp_tensor[i][j * nnz: (j + 1) * nnz] = hp_sparse_qnt['qnt_block']
+
+            hp_scale[i][j] = scale_hp_fp24
+            lp_scale[i][j] = scale_lp_fp24
+            bitmasks[i][j] = bm
+
+            # for test
+            hp_tensor_zeros = hp_tensor_zeros.to(torch.float32)  # fp8e43 do not support fp8e43
+
+            lp_tensor_zeros[i][j * bank_size: (j + 1) * bank_size][sparse_res['lp_indices']] = lp_sparse_qnt[
+                'qnt_block']
+            hp_tensor_zeros[i][j * bank_size: (j + 1) * bank_size][sparse_res['sorted_topk_indices']] = hp_sparse_qnt[
+                'qnt_block'].to(torch.float32)
+
+    return {
+        'input_tensor': input_matrix,
+        'hp_tensor': hp_tensor,
+        'lp_tensor_encoded': lp_tensor_encoded,
+        'hp_scale': hp_scale,
+        'lp_scale': lp_scale,
+        'hp_index': sort_index
     }
 
 
@@ -704,93 +863,6 @@ def gen_data_sparse_mask(
     }
 
 
-def is_dandiao(matrix, mode='i') -> str:
-    flattened = matrix.flatten()
-    diff = torch.diff(flattened)
-    if (diff >= 0).all():
-        return "increasing"  # 判断是否所有差值 >= 0
-    elif (diff <= 0).all():
-        return "decreasing"  # 判断是否所有差值 <= 0
-    else:
-        return "none"
-
-
-def sort(x: torch.Tensor, order: int = 0, bitonic: int = 0) -> torch.Tensor:
-    """
-    x      : Tensor，形状 (8, n)，代表 8 个 bank。
-    order  : 0 = 升序，1 = 降序（基准方向）
-    bitonic: 0  -> 所有 bank 方向一致
-             1  -> 每 1 个 bank 翻转一次    (↑↓↑↓↑↓↑↓)
-             2  -> 每 2 个 bank 翻转一次    (↑↑↓↓↑↑↓↓)
-             4  -> 每 4 个 bank 翻转一次    (↑↑↑↑↓↓↓↓)
-    """
-    # assert x.dim() == 2 and x.size(0) == 8
-    n_bank = x.size(0)
-    sorted_banks = []
-
-    reverse_base = 0 if order == 1 else 1
-    for i in range(n_bank):
-        curr_order = order
-        if bitonic:
-            flip = (i // bitonic) % 2 != 0
-            if flip:
-                curr_order = reverse_base
-        vals, _ = torch.sort(x[i], descending=bool(curr_order))
-        sorted_banks.append(vals)
-
-    return torch.stack(sorted_banks, dim=0)
-
-
-def compare(
-        input_tensor: torch.Tensor,  # (8, 64)
-        stride: int = 1,
-        flip: int = 1,
-        mode: int = 0,
-        idx: torch.Tensor = None,  # (8, 64) or None
-):
-    assert input_tensor.size(0) == 8
-    if idx is not None:
-        assert idx.shape == input_tensor.shape
-
-    out_val = input_tensor.clone()
-    out_idx = None if idx is None else idx.clone()
-
-    reverse = 0 if mode == 1 else 1
-    stride_iters = 4 // stride
-    cmp_idx = 0
-
-    for ii in range(stride_iters):
-        for jj in range(stride):
-            b0 = ii * stride * 2 + jj
-            b1 = b0 + stride
-
-            curr_mode = mode
-            if flip and (cmp_idx // flip) % 2 == 1:
-                curr_mode = reverse
-            cmp_idx += 1
-
-            v0, v1 = out_val[b0], out_val[b1]
-
-            if curr_mode == 0:  # Min-Max
-                mask = v0 <= v1
-                new0 = torch.where(mask, v0, v1)
-                new1 = torch.where(mask, v1, v0)
-            else:  # Max-Min
-                mask = v0 >= v1
-                new0 = torch.where(mask, v0, v1)
-                new1 = torch.where(mask, v1, v0)
-
-            out_val[b0], out_val[b1] = new0, new1
-
-            if out_idx is not None:
-                i0, i1 = out_idx[b0], out_idx[b1]
-                new_i0 = torch.where(mask, i0, i1)
-                new_i1 = torch.where(mask, i1, i0)
-                out_idx[b0], out_idx[b1] = new_i0, new_i1
-
-    return out_val, out_idx
-
-
 def gen_data_sparse_hp_lp(
         w: int = 64,
         k: int = 64,
@@ -802,6 +874,7 @@ def gen_data_sparse_hp_lp(
         weight_dtype: str = INT8,
         out_dtype: str = BF16
 ) -> Dict[str, Any]:
+    # TODO: change with gen_data_d2l_hp_lp ?
     if nnz not in (4, 8, 16, 32, 64):
         raise ValueError(f"unsupported nnz")
     nnz = int(nnz)
