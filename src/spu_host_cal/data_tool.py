@@ -384,7 +384,7 @@ def bank_quantize(block: torch.Tensor, out_dtype: str, sym: bool = True) -> Dict
         x_max = block.max(dim=-1, keepdim=True).values
         x_min = block.min(dim=-1, keepdim=True).values
         mean = (x_max + x_min) / 2
-    block -= mean
+        block -= mean
     max_abs = torch.max(torch.abs(block))
     # print(f"mean:{mean}")
     # print(f"block:{block}")
@@ -548,6 +548,36 @@ def gen_data_d2sqnt(
         'input_tensor': input_tensor,
         'output_tensor': input_sparse_qnt,
         'scale': scale,
+        'bitmasks': bitmasks,
+        'index': index,
+    }
+
+
+def gen_data_d2s(
+        w: int,
+        c: int,
+        nnz: int,
+        idtype: str,
+        odtype: str,
+        bank_size: int = 64,
+) -> Dict[str, Any]:
+    bank_num = int(c / bank_size)
+    input_tensor = generate_matrix(w, c, dtype_torch_map[idtype])
+
+    input_sparse = torch.zeros(w, bank_num, nnz, dtype=dtype_torch_map[odtype])
+    bitmasks = np.zeros((w, bank_num), dtype=np.uint32) if bank_size == 32 else np.zeros((w, bank_num), dtype=np.uint64)
+    index = torch.zeros(w, bank_num, nnz, dtype=torch.int8)
+    for i in range(w):
+        for j in range(bank_num):
+            block = input_tensor[i][j * bank_size: (j + 1) * bank_size].clone()
+            block_nnz = bank_sparse(block, nnz)
+            input_sparse[i][j] = block_nnz['hp_block']
+            bitmasks[i][j] = block_nnz['bitmask']
+            index[i][j] = block_nnz['sorted_topk_indices']
+
+    return {
+        'input_tensor': input_tensor,
+        'output_tensor': input_sparse,
         'bitmasks': bitmasks,
         'index': index,
     }
