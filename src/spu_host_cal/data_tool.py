@@ -322,6 +322,23 @@ def load_tsr_from_txt(path: str, dtype: str = FP32):
         raise ValueError(f"Failed to load tensor from {path}. Error: {str(e)}")
 
 
+def hex_to_bin(input_txt: str, output_txt: str, little_endian: bool = True):
+    dtype = "int4"
+    result_list = []
+    with open(input_txt, 'r') as infile, open(output_txt, 'wb') as outfile:
+        for line in infile:
+            hex_str = line.strip()
+            if not hex_str:
+                continue
+            hex_str = hex_str if little_endian else hex_str[::-1]
+            byte_data = bytes.fromhex(hex_str)
+            outfile.write(byte_data)
+
+    print(f"save {output_txt} success!")
+
+    return True
+
+
 def is_dandiao(matrix, mode='i') -> str:
     flattened = matrix.flatten()
     diff = torch.diff(flattened)
@@ -409,13 +426,15 @@ def compare(
     return out_val, out_idx
 
 
-def get_topk_index(bank_vec: torch.Tensor, k: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def get_topk_index(bank_vec: torch.Tensor, k: int, flag: bool = True) -> Tuple[
+    torch.Tensor, torch.Tensor, torch.Tensor]:
     abs_bank_vec = torch.abs(bank_vec)
     indices = torch.arange(len(bank_vec))
     combined = list(zip(abs_bank_vec.tolist(), indices.tolist()))
     combined_sorted = sorted(combined, key=lambda bank_vec: (-bank_vec[0], bank_vec[1]))
 
-    topk_indices = torch.tensor([idx for _, idx in combined_sorted[:k]])
+    topk_indices = torch.tensor([idx for _, idx in combined_sorted[:k]]) if flag \
+        else torch.sort(abs_bank_vec)[1]
     sorted_topk_indices, _ = torch.sort(topk_indices)
     return sorted_topk_indices, topk_indices, bank_vec[topk_indices]
 
