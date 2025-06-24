@@ -435,7 +435,7 @@ def get_topk_index(bank_vec: torch.Tensor, k: int, flag: bool = True) -> Tuple[
 
     # flag == False 两个数绝对值相等时优先index较小  True优先较大的
     topk_indices = torch.tensor([idx for _, idx in combined_sorted[:k]]) if flag \
-        else torch.sort(abs_bank_vec, descending=True)[1][0: k]
+        else torch.sort(abs_bank_vec)[1][48:]
     sorted_topk_indices, _ = torch.sort(topk_indices)
     return sorted_topk_indices, topk_indices, bank_vec[topk_indices]
 
