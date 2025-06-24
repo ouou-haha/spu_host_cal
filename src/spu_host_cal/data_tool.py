@@ -434,7 +434,7 @@ def get_topk_index(bank_vec: torch.Tensor, k: int, flag: bool = True) -> Tuple[
     combined_sorted = sorted(combined, key=lambda bank_vec: (-bank_vec[0], bank_vec[1]))
 
     topk_indices = torch.tensor([idx for _, idx in combined_sorted[:k]]) if flag \
-        else torch.sort(abs_bank_vec)[1]
+        else torch.sort(abs_bank_vec)[1][48:]
     sorted_topk_indices, _ = torch.sort(topk_indices)
     return sorted_topk_indices, topk_indices, bank_vec[topk_indices]
 
