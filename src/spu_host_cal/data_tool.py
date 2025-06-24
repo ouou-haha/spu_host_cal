@@ -426,17 +426,38 @@ def compare(
     return out_val, out_idx
 
 
-def get_topk_index(bank_vec: torch.Tensor, k: int, flag: bool = True) -> Tuple[
-    torch.Tensor, torch.Tensor, torch.Tensor]:
-    abs_bank_vec = torch.abs(bank_vec)
-    indices = torch.arange(len(bank_vec))
-    combined = list(zip(abs_bank_vec.tolist(), indices.tolist()))
-    combined_sorted = sorted(combined, key=lambda bank_vec: (-bank_vec[0], bank_vec[1]))
+def sort_by_abs_torch(
+    values: torch.Tensor,
+    indices: torch.Tensor = None,
+    prefer_small_index_last: bool = False
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
 
-    # flag == False 两个数绝对值相等时优先index较小  True优先较大的
-    topk_indices = torch.tensor([idx for _, idx in combined_sorted[:k]])
-    sorted_topk_indices, _ = torch.sort(topk_indices)
-    return sorted_topk_indices, topk_indices, bank_vec[topk_indices]
+    if indices is None:
+        indices = torch.arange(values.shape[0])
+    assert values.ndim == indices.ndim == 1 and values.shape == indices.shape
+    if prefer_small_index_last:
+        order = torch.argsort(-indices, stable=True)
+    else:
+        order = torch.argsort(indices, stable=True)
+
+    values = values[order]
+    indices = indices[order]
+
+    order2 = torch.argsort(values.abs(), stable=True)
+
+    final_order = order[order2]
+    return values[order2], indices[order2], final_order
+
+
+def get_topk_index(bank_vec: torch.Tensor, k: int, flag: bool = False) -> Tuple[  # TODO: 优先小还是优先大 flag = False： 大
+    torch.Tensor, torch.Tensor, torch.Tensor]:
+
+
+    v_sorted2, i_sorted2, ord2 = sort_by_abs_torch(bank_vec, None, flag)
+    topk_element = v_sorted2[-k:]
+    topk_indices = i_sorted2[-k:]
+    sorted_topk_indices = torch.sort(topk_indices)[0]
+    return sorted_topk_indices, topk_indices, topk_element
 
 
 def bank_sparse(block: torch.Tensor, nnz: int) -> Dict[str, Any]:
