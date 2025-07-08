@@ -10,7 +10,7 @@ import sys
 import os
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from method import softmax
+# from method import softmax
 
 print(f"torch version: {torch.__version__} ")
 print(f"data_tool version: {5.9}")
@@ -603,16 +603,33 @@ def s2ddqnt(
         'output_dense_qnt': output_dense_qnt,
         'output': output_dense_dqnt,
     }
-
+    
 
 def gen_data_softmax(w: int, c: int, idtype: str = "bf16") -> Dict[str, torch.Tensor]:
     ori_input_tensor = generate_matrix(w, c, dtype_torch_map[idtype])
-    input_tensor = ori_input_tensor.clone()
-    output_tensor, local_sum, local_max = softmax(input_tensor, debug=False)
+    input_tensor = ori_input_tensor.clone().flatten().to(torch.float32)
+    if input_tensor.size()[0] % 64 == 0:
+        group_num = input_tensor.size()[0] // 64
+    else:
+        raise ValueError(f"size is wrong 64")
+    
+    output_tensor = torch.zeros_like(input_tensor)
+    d = torch.zeros(group_num)
+    m = torch.zeros(group_num)
+    for i in range(group_num):
+        bank_vec = input_tensor[i * 64 : (i + 1) * 64]
+        max_val = torch.max(bank_vec)
+        tmp_val = bank_vec - max_val
+        expon = torch.exp(tmp_val)
+        output_tensor[i * 64 : (i + 1) * 64] = expon
+        bank_sum = torch.sum(expon)
+        d[i] = bank_sum
+        m[i] = max_val
+    output_tensor = output_tensor.to(dtype_torch_map[idtype])
     return {
         'input': ori_input_tensor,
-        'd': local_sum,
-        'm': local_max,
+        'd': d,
+        'm': m,
         'output_tensor': output_tensor,
     }
 
@@ -824,11 +841,15 @@ def gen_data_qnt(
         input_dtype: str = BF16,
         out_dtype: str = INT8,
         bank_size: int = 64,
+        input_tsr: torch.Tensor = None,
 ) -> Dict[str, torch.Tensor]:
     if input_dtype.lower() not in BF16:
         raise ValueError(f"unsupported indtype")
     bank_num = int(c / bank_size)
-    input_tensor = generate_matrix(w, c, dtype_torch_map[input_dtype])
+    if input_tsr is None:
+        input_tensor = generate_matrix(w, c, dtype_torch_map[input_dtype])
+    else:
+        input_tensor = input_tsr.clone()
     if out_dtype == INT4:
         input_sparse_qnt = torch.zeros(w, bank_num, bank_size, dtype=torch.int8)
     else:
