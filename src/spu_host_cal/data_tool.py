@@ -1054,6 +1054,7 @@ def gen_data_dense_with_scale(
         k: int,
         input_dtype: str,
         weight_dtype: str,
+        output_dtype: str = FP32,
 ) -> Dict[str, Any]:
     if input_dtype not in (INT8, FP8E5M2, FP8E4M3) or weight_dtype not in (INT8, FP8E5M2, FP8E4M3):
         raise ValueError(f"only support int8, fp8 for lp gemm")
@@ -1089,7 +1090,7 @@ def gen_data_dense_with_scale(
     res_host = input_dqnt.reshape(w, c) @ weight_dqnt.reshape(k, c).T
 
     # res_host = input_qnt.to(torch.float32).reshape(w, c) @ weight_qnt.to(torch.float32).reshape(k, c).T * input_scale * weight_scale.T
-    res_host = res_host.to(torch.bfloat16)
+    res_host = res_host.to(dtype_torch_map[output_dtype])
     return {
         'input_tensor': input_qnt,
         'weight_tensor': weight_qnt,
