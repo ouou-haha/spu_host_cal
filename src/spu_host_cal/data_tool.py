@@ -900,14 +900,18 @@ def gen_data_sparse_mask(
     if nnz > c:
         raise ValueError(f"nnz > c: {nnz}")
 
-    for i in range(w):
-        for j in range(bank_num):
-            block = input_dense[i][j * bank_size: (j + 1) * bank_size].to(torch.float32)
-            result = bank_sparse(block, nnz)
-            bitmasks[i][j] = result['bitmask']
-            input_sparse[i][j * bank_size: (j + 1) * bank_size] = result['hp_block_zeros']
-            input_sparse_nnz[i][j * nnz: (j + 1) * nnz] = result['hp_block']
-
+    if bank_size > nnz:
+        for i in range(w):
+            for j in range(bank_num):
+                block = input_dense[i][j * bank_size: (j + 1) * bank_size].to(torch.float32)
+                result = bank_sparse(block, nnz)
+                bitmasks[i][j] = result['bitmask']
+                input_sparse[i][j * bank_size: (j + 1) * bank_size] = result['hp_block_zeros']
+                input_sparse_nnz[i][j * nnz: (j + 1) * nnz] = result['hp_block']
+    else:
+        input_sparse = input_matrix
+        input_sparse_nnz = input_matrix
+        
     output = input_sparse.to(torch.float32) @ weight_dense.to(torch.float32).T
     output = output.to(out_dtype)
 
@@ -1055,6 +1059,7 @@ def gen_data_dense_with_scale(
         input_dtype: str,
         weight_dtype: str,
         output_dtype: str = FP32,
+        SCALE: bool = True,
 ) -> Dict[str, Any]:
     if input_dtype not in (INT8, FP8E5M2, FP8E4M3) or weight_dtype not in (INT8, FP8E5M2, FP8E4M3):
         raise ValueError(f"only support int8, fp8 for lp gemm")
@@ -1085,8 +1090,15 @@ def gen_data_dense_with_scale(
             weight_qnt[i][j * bank_size: (j + 1) * bank_size] = block_qnt['qnt_block']
             weight_scale[i][j] = torch.from_numpy(float32_to_bf24_as_float32(block_qnt['scale'].numpy()))
 
-    input_dqnt = input_qnt.to(torch.float32).reshape(w, bank_num, bank_size) * input_scale.unsqueeze(-1)
-    weight_dqnt = weight_qnt.to(torch.float32).reshape(k, bank_num, bank_size) * weight_scale.unsqueeze(-1)
+    if SCALE:
+        input_dqnt = input_qnt.to(torch.float32).reshape(w, bank_num, bank_size) * input_scale.unsqueeze(-1)
+        weight_dqnt = weight_qnt.to(torch.float32).reshape(k, bank_num, bank_size) * weight_scale.unsqueeze(-1)
+    else:
+        input_dqnt = input_qnt.to(torch.float32).reshape(w, bank_num, bank_size)
+        weight_dqnt = weight_qnt.to(torch.float32).reshape(k, bank_num, bank_size)
+        input_scale = torch.ones_like(input_scale)
+        weight_scale = torch.ones_like(weight_scale)
+
     res_host = input_dqnt.reshape(w, c) @ weight_dqnt.reshape(k, c).T
 
     # res_host = input_qnt.to(torch.float32).reshape(w, c) @ weight_qnt.to(torch.float32).reshape(k, c).T * input_scale * weight_scale.T
