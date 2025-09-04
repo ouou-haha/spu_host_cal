@@ -2,7 +2,7 @@
 import argparse
 import numpy as np
 import torch
-from typing import Tuple, Dict, Any
+from typing import Tuple, Dict, Any, List
 import torch.nn.functional as F
 import inspect
 import textwrap
@@ -425,7 +425,7 @@ def compare(
 
     return out_val, out_idx
 
-
+# sort v1.0
 def sort_by_abs_torch(
     values: torch.Tensor,
     indices: torch.Tensor = None,
@@ -448,16 +448,84 @@ def sort_by_abs_torch(
     final_order = order[order2]
     return values[order2], indices[order2], final_order
 
+#sort v2.0 batch comp
+def batcher_abs_sort_64(values: List[int], k: int, *, strict: bool = True)->Tuple[
+    torch.Tensor, torch.Tensor, torch.Tensor]:
+
+    def _generate_batcher_sort_comps_64() -> List[List[Tuple[int, int]]]:
+        blocks_list  = [32, 16, 8, 4, 2, 1]
+        segs_list    = [1, 1, 3, 7, 15, 31]
+        lines_list   = [1, 2, 4, 8, 16, 32]
+        stage_idx_list = [
+            (0,0),
+            (1,0), (1,1),
+            (2,0), (2,1), (2,2),
+            (3,0), (3,1), (3,2), (3,3),
+            (4,0), (4,1), (4,2), (4,3), (4,4),
+            (5,0), (5,1), (5,2), (5,3), (5,4), (5,5),
+        ]
+        stages: List[List[Tuple[int,int]]] = []
+        for s0, s1 in stage_idx_list:
+            bs = blocks_list[s0]
+            ss = segs_list[s1]
+            ls = lines_list[s0 - s1]
+            stride = ls
+            comps: List[Tuple[int,int]] = []
+            for i in range(bs):
+                offset = i * (64 // bs)
+                if s1 > 0:
+                    offset += (1 << (s0 - s1))
+                for j in range(ss):
+                    curr_off = offset + 2 * stride * j
+                    for k in range(ls):
+                        comps.append((curr_off + k, curr_off + k + stride))
+            stages.append(comps)
+        return stages
+
+    _BATCHER_64 = _generate_batcher_sort_comps_64()
+
+    n = len(values)
+    if strict and n != 64:
+        raise ValueError(f"expects 64 inputs, got {n}")
+    # 需要时用哨兵补齐：哨兵绝对值最大，自动排到末尾
+    PAD_SENTINEL = (10**9)  # 够大即可
+    padded = False
+    if not strict and n < 64:
+        values = list(values) + [PAD_SENTINEL] * (64 - n)
+        padded = True
+    elif not strict and n > 64:
+        raise ValueError("strict=False 仅支持 n<=64")
+
+    arr: List[Tuple[int,int]] = [(values[i], i if i < n else -1) for i in range(64)]
+
+    for comps in _BATCHER_64:
+        for i, j in comps:
+            if abs(arr[i][0]) > abs(arr[j][0]):
+                arr[i], arr[j] = arr[j], arr[i]
+
+    topk_indices: torch.Tensor = [num[1] for num in arr[-k:]]
+    topk_element: torch.Tensor = [num[0] for num in arr[-k:]]
+
+    tail_sorted = sorted(arr[-k:], key=lambda x: x[1])
+    arr = arr[:-k] + tail_sorted
+
+    if padded:
+        arr = [p for p in arr if p[1] != -1]
+    sorted_topk_indices: torch.Tensor = [num[1] for num in tail_sorted]
+    return torch.tensor(sorted_topk_indices), torch.tensor(topk_indices), torch.tensor(topk_element)
 
 def get_topk_index(bank_vec: torch.Tensor, k: int, flag: bool = False) -> Tuple[  # TODO: 优先小还是优先大 flag = False： 大
     torch.Tensor, torch.Tensor, torch.Tensor]:
 
 
-    v_sorted2, i_sorted2, ord2 = sort_by_abs_torch(bank_vec, None, flag)
-    topk_element = v_sorted2[-k:]
-    topk_indices = i_sorted2[-k:]
-    sorted_topk_indices = torch.sort(topk_indices)[0]
-    return sorted_topk_indices, topk_indices, topk_element
+    # v_sorted2, i_sorted2, ord2 = sort_by_abs_torch(bank_vec, None, flag)
+    # topk_element = v_sorted2[-k:]
+    # topk_indices = i_sorted2[-k:]
+    # sorted_topk_indices = torch.sort(topk_indices)[0]
+    # return sorted_topk_indices, topk_indices, topk_element
+    values = bank_vec.tolist()
+    return batcher_abs_sort_64(values, k)
+
 
 
 def bank_sparse(block: torch.Tensor, nnz: int) -> Dict[str, Any]:
