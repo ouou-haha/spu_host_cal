@@ -1342,6 +1342,42 @@ def spu_host_data(
 
     return True
 
+def dump_bin(
+    file_path: str,
+    addr: int,
+    length: int,
+    dtype: str = "INT8",
+    out_path: str = None
+) -> torch.Tensor:
+
+    file_size = os.path.getsize(file_path)
+
+    if addr < 0 or addr >= file_size:
+        raise ValueError(f"addr out of range: {addr}, file size={file_size}")
+
+    end = min(addr + length, file_size)
+
+    with open(file_path, "rb") as f:
+        f.seek(addr)
+        data = f.read(end - addr)
+
+    is_tmp = False
+    if out_path is None:
+        out_path = "tmp_out.bin"
+        is_tmp = True
+
+    with open(out_path, "wb") as f:
+        f.write(data)
+
+    print(f"[OK] dump {len(data)} bytes -> {out_path}")
+
+    # load tensor
+    out_tsr = load_bin_tensor(out_path, dtype)
+
+    if is_tmp:
+        os.remove(out_path)
+
+    return out_tsr
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="SPU Host Case Data Generation")
